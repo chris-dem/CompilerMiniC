@@ -1,0 +1,28 @@
+- program
+  - extern_list decl_list
+    - (ex_li)
+      - extern extern_list'
+        - (ex)
+          - "extern" type_spec IDENT "(" param")" ";"
+        - (extern_list)
+          - extern extern_list'
+          - epsilon
+    - decl_list
+    - same as below
+  - decl_list 
+    - decl decl_list'
+      - (decl)
+        - var_decl
+          -  var_type IDENT ";"
+             -  int
+             -  float
+             -  bool 
+        - fun_dec
+          - type_spec IDENT "(" params ")" block
+          - type_spec
+            - void
+            - var_type (above)
+      - (decl_list')
+        - epsilon
+        - decl decl_list'
+          - No need check above
