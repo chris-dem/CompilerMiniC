@@ -1008,20 +1008,18 @@ Value* BinaryOperatorASTnode::codegen() {
     if (!L || !R)
         return nullptr;
     if (L->getType()->getTypeID() !=
-        R->getType()->getTypeID()) { // L : Float R : Int or vice versa
-        if (L->getType()->getTypeID() ==
-            llvm::Type::TypeID::FloatTyID) { // Case 1
-            R = Builder.CreateSIToFP(R, Type::getDoubleTy(TheContext),
+        R->getType()->getTypeID()) {     // L : Float R : Int or vice versa
+        if (L->getType()->isFloatTy()) { // Case 1
+            R = Builder.CreateSIToFP(R, Type::getFloatTy(TheContext),
                                      "floattmp");
         } else { // else case
-            L = Builder.CreateSIToFP(L, Type::getDoubleTy(TheContext),
+            L = Builder.CreateSIToFP(L, Type::getFloatTy(TheContext),
                                      "floattmp");
         }
     }
     // TODO ASK ABOUT ORDERING
-    if (L->getType()->getTypeID() ==
-        Type::TypeID::FloatTyID) // Since both have the same value, check if
-                                 // float
+    if (L->getType()->isFloatTy()) // Since both have the same value, check if
+                                   // float
         switch (Op) {
         case TOKEN_TYPE::PLUS:
             return Builder.CreateFAdd(L, R, "f_addtmp");
@@ -1056,6 +1054,18 @@ Value* BinaryOperatorASTnode::codegen() {
         case TOKEN_TYPE::GT:
             return Builder.CreateFCmpOGT(L, R, "f_gttmp");
             break;
+        case TOKEN_TYPE::AND:
+            L = Builder.CreateFPToSI(L, Type::getInt32Ty(TheContext),
+                                     "li_temp");
+            R = Builder.CreateFPToSI(R, Type::getInt32Ty(TheContext),
+                                     "ri_temp");
+            return Builder CreateAnd(L, R, "andtmp");
+        case TOKEN_TYPE::OR:
+            L = Builder.CreateFPToSI(L, Type::getInt32Ty(TheContext),
+                                     "li_temp");
+            R = Builder.CreateFPToSI(R, Type::getInt32Ty(TheContext),
+                                     "ri_temp");
+            return Builder.CreateOr(L, R, "ortmp");
         }
     else
         switch (Op) {
@@ -1092,6 +1102,10 @@ Value* BinaryOperatorASTnode::codegen() {
         case TOKEN_TYPE::GT:
             return Builder.CreateICmpGT(L, R, "i_gttmp");
             break;
+        case TOKEN_TYPE::AND:
+            return Builder.CreateAnd(L, R, "andtmp");
+        case TOKEN_TYPE::OR:
+            return Builder.CreateOr(L, R, "ortmp");
         }
     return nullptr;
 }
@@ -1100,13 +1114,16 @@ Value* UnaryOperatorASTnode::codegen() {
     Value* f = Expr->codegen();
     if (!f)
         return nullptr;
-    if (f->getType()->getTypeID() == Type::TypeID::FloatTyID) {
-        switch (Op) {
-        case TOKEN_TYPE::MINUS:
+    if (f->getType()->isFloatTy()) {
+        if (Op == TOKEN_TYPE::MINUS)
             return Builder.CreateFNeg(f, "f_negtmp");
-        case TOKEN_TYPE::NOT:
-            return Builder.CreateNo();
-        }
+        f = Builder.CreateFPToSI(f, "int_temp");
+    }
+    switch (Op) {
+    case TOKEN_TYPE::NOT:
+        return Builder.CreateNot(f, "i_nottmp");
+    case TOKEN_TYPE::MINUS:
+        return Builder.CreateNeg(f, "i_temp");
     }
 }
 
