@@ -2,6 +2,9 @@
 #define HELPERS_H
 
 #include "astnodes.hpp"
+#include "llvm/IR/Instructions.h"
+#include <list>
+#include <map>
 #include <string>
 #include <variant>
 
@@ -23,6 +26,11 @@ namespace misc {
     bool checkTokenRetType(const int& type);
     std::string VarTypeToStr(const TOKEN_TYPE& t);
     static void restoreState(const TOKEN& prev);
+    static Value* findElem(const std::string& Name, Type* typ);
+
+    static llvm::AllocaInst* CreateEntryBlockAlloca(Function* TheFunction,
+                                                    const std::string& VarName,
+                                                    llvm::Type* Typ);
 }; // namespace misc
 
 using Semi = char;

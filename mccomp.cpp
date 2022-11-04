@@ -27,6 +27,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
+#include <list>
 #include <map>
 #include <memory>
 #include <optional>
@@ -971,14 +972,35 @@ static IRBuilder<> Builder(TheContext); // Helps to generate llvm instructures
 static std::unique_ptr<Module>
     TheModule; // contains functions and global variables, owns mem for all data
                // we generate
-static std::map<std::string, Value*>
+static std::list<std::map<std::string, AllocaInst*>>
     NamedValues; // Will keep track of wich values are defined in the current
                  // scope Helps to keep track their llvm representation
                  // IE  : SymbolTable
 
+static std::map<std::string, Value*>
+    GlobalVariables; // Will keep of global variables
+
 Value* LogErrorV(const char* str) {
     LogError(Str);
     return nullptr;
+}
+
+static Value* misc::findElem(const std::string& Name, Type* type) {
+    for (auto it = NamedValues.rbegin(); it != NamedValues.rend();
+         it++) { // Start from the most local scope and go backwards
+        if (it[Name]) {
+            return Builder.CreateLoad(type, it[Name], Name);
+        }
+    }
+    return GlobalVariables[Name];
+}
+
+static AllocaInst* misc::CreateEntryBlockAlloca(Function* TheFunction,
+                                                const std::string& VarName,
+                                                const Type* typ) {
+    IRBuilder<> TmpB(&TheFunction->getEntryBlock(),
+                     TheFunction->getEntryBlock().begin());
+    return TmpB.CreateAlloca(typ, 0, VarName.c_str());
 }
 
 Value* FloatASTnode::codegen() {
@@ -989,16 +1011,23 @@ Value* IntASTnode::codegen() {
     return ConstantFP::get(TheContext, APInt(Val));
 }
 
-Value* BoolASTnode::codegen() { // TODO check if exists APBool
+Value* BoolASTnode::codegen() {
     int val = Val ? 1 : 0;
     return ConstantFP::get(TheContext, APInt(val));
 }
 
 Value* IdentifierASTnode::codegen() {
     // Look up variable in function
-    Value* V = NamedValues[Name];
-    if (!V)
-        LogErrorV("Unknown variable name");
+    Type* typ;
+    if (it[Name]->isFloatTy()) {
+        typ = Type::getFloatTy(TheContext);
+    } else {
+        typ = Type::getInt32Ty(TheContext);
+    }
+    Value* V = misc::findElem(Name, typ);
+    if (!V) {
+        return LogErrorV("Unknown variable");
+    }
     return V;
 }
 
@@ -1018,8 +1047,8 @@ Value* BinaryOperatorASTnode::codegen() {
         }
     }
     // TODO ASK ABOUT ORDERING
-    if (L->getType()->isFloatTy()) // Since both have the same value, check if
-                                   // float
+    if (L->getType()->isFloatTy()) // Since both have the same value, check
+                                   // if float
         switch (Op) {
         case TOKEN_TYPE::PLUS:
             return Builder.CreateFAdd(L, R, "f_addtmp");
@@ -1125,6 +1154,24 @@ Value* UnaryOperatorASTnode::codegen() {
     case TOKEN_TYPE::MINUS:
         return Builder.CreateNeg(f, "i_temp");
     }
+}
+
+Value* DeclarationASTnode::codegen() {
+    Type* typ;
+    if (Type == TOKEN_TYPE::FLOAT_TOK) {
+        typ = Type::getFloatTy(TheContext);
+    } else {
+        typ = Type::getInt32Ty(TheContext);
+    }
+    AllocaInst* var = CreateEntryBlockAlloca(
+        Builder.GetInsertBlock()->getParent(), Name, typ);
+    NamedValues.back().insert({Name, var}); // Add value to the local scope
+    return nullptr; // It is fine to return a null pointer since there is no
+                    // unsafe function that is going  to occur
+}
+
+Value* AssignmentASTnode::codegen() {
+    Value* V = misc::findElem(Name)
 }
 
 //===----------------------------------------------------------------------===//
