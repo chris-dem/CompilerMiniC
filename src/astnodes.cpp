@@ -267,4 +267,14 @@ std::string FunctionASTnode::to_string() const {
 // IdentifierASTnode
 ReturnStatementASTnode::ReturnStatementASTnode(OptionalPtr ret_expr)
     : RetExpr(std::move(ret_expr)){};
+
+std::string ReturnStatementASTnode::to_string() const {
+    std::stringstream ss;
+    ss << "[ Return Node ";
+    if (RetExpr.has_value()) {
+        ss << ": Expression : " << RetExpr.value()->to_string() << " ";
+    }
+    ss << "]";
+    return ss.str();
+}
 //===----------------------------------------------------------------------===//

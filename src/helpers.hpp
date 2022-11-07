@@ -13,6 +13,8 @@ namespace misc {
     std::string convertNo(const int& line, const int& col);
     std::string convertNo(const TOKEN& tok);
 
+    const std::optional<Value*> NULLOPTPTR = std::optional(nullptr);
+
     enum class Var_Type : int {
         Int   = -2,
         Void  = -3,
@@ -26,7 +28,10 @@ namespace misc {
     bool checkTokenRetType(const int& type);
     std::string VarTypeToStr(const TOKEN_TYPE& t);
     static void restoreState(const TOKEN& prev);
-    static Value* findElem(const std::string& Name, Type* typ);
+    static Value* findElem(const std::string& Name);
+    void calcBuilder(llvm::Value* val,
+                     std::function<void(llvm::Value*)> func_float,
+                     std::function<void(llvm::Value*)> func_int);
 
     static llvm::AllocaInst* CreateEntryBlockAlloca(Function* TheFunction,
                                                     const std::string& VarName,

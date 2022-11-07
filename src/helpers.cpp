@@ -2,6 +2,7 @@
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
+#include <iostream>
 #include <sstream>
 
 std::string misc::convertNo(const TOKEN& tok) {
@@ -120,6 +121,16 @@ bool misc::checkTokenRetType(const int& type) {
         return true;
     }
     return false;
+}
+
+void misc::calcBuilder(llvm::Value* val,
+                       std::function<void(llvm::Value*)> func_float,
+                       std::function<void(llvm::Value*)> func_int) {
+    if (val->getType()->isFloatTy()) {
+        func_float(val);
+    } else {
+        func_int(val);
+    }
 }
 
 std::string misc::VarTypeToStr(const TOKEN_TYPE& t) {

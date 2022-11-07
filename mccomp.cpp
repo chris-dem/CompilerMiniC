@@ -966,6 +966,11 @@ static void parser() {
 // Code Generation
 //===----------------------------------------------------------------------===//
 
+// TODO FINISH CODEGEN (BY END OF WEEK)
+// TODO FIX OUTPUT (BY END OF WEEK)
+// TODO APPLY LAZY EVAL(BY END OF WEEK)
+// TODO WARNING ON TYPE CONV
+
 static LLVMContext
     TheContext; // Opaque object that owns a lot of core llvm data structures
 static IRBuilder<> Builder(TheContext); // Helps to generate llvm instructures
@@ -980,16 +985,22 @@ static std::list<std::map<std::string, AllocaInst*>>
 static std::map<std::string, Value*>
     GlobalVariables; // Will keep of global variables
 
-Value* LogErrorV(const char* str) {
+std::optional<Value*> LogErrorV(const char* str) {
     LogError(Str);
-    return nullptr;
+    return std::optional<nullptr>;
 }
 
-static Value* misc::findElem(const std::string& Name, Type* type) {
+static Value* misc::findElem(const std::string& Name) {
     for (auto it = NamedValues.rbegin(); it != NamedValues.rend();
          it++) { // Start from the most local scope and go backwards
         if (it[Name]) {
-            return Builder.CreateLoad(type, it[Name], Name);
+            Type* typ;
+            if (it[Name]->getType()->isFloatTy()) {
+                typ = Type::getFloatTy(TheContext);
+            } else {
+                typ = Type::getInt32Ty(TheContext);
+            }
+            return Builder.CreateLoad(typ, it[Name], Name);
         }
     }
     return GlobalVariables[Name];
@@ -1003,39 +1014,33 @@ static AllocaInst* misc::CreateEntryBlockAlloca(Function* TheFunction,
     return TmpB.CreateAlloca(typ, 0, VarName.c_str());
 }
 
-Value* FloatASTnode::codegen() {
-    return ConstantFP::get(TheContext, APFloat(Val));
+std::optional<Value*> FloatASTnode::codegen() {
+    return std::optional(ConstantFP::get(TheContext, APFloat(Val)));
 }
 
-Value* IntASTnode::codegen() {
-    return ConstantFP::get(TheContext, APInt(Val));
+std::optional<Value*> IntASTnode::codegen() {
+    return std::optional(ConstantInt::get(TheContext, APInt(Val)));
 }
 
-Value* BoolASTnode::codegen() {
+std::optional<Value*> BoolASTnode::codegen() {
     int val = Val ? 1 : 0;
-    return ConstantFP::get(TheContext, APInt(val));
+    return std::optional(ConstantInt::get(TheContext, APInt(val)));
 }
 
-Value* IdentifierASTnode::codegen() {
+std::optional<Value*> IdentifierASTnode::codegen() {
     // Look up variable in function
-    Type* typ;
-    if (it[Name]->isFloatTy()) {
-        typ = Type::getFloatTy(TheContext);
-    } else {
-        typ = Type::getInt32Ty(TheContext);
-    }
     Value* V = misc::findElem(Name, typ);
     if (!V) {
         return LogErrorV("Unknown variable");
     }
-    return V;
+    return std::optional(V);
 }
 
-Value* BinaryOperatorASTnode::codegen() {
+std::optional<Value*> BinaryOperatorASTnode::codegen() {
     Value* L = LHS->codegen();
     Value* R = RHS->codegen();
     if (!L || !R)
-        return nullptr;
+        return std::optional(nullptr);
     if (L->getType()->getTypeID() !=
         R->getType()->getTypeID()) {     // L : Float R : Int or vice versa
         if (L->getType()->isFloatTy()) { // Case 1
@@ -1049,114 +1054,115 @@ Value* BinaryOperatorASTnode::codegen() {
     // TODO ASK ABOUT ORDERING
     if (L->getType()->isFloatTy()) // Since both have the same value, check
                                    // if float
+
         switch (Op) {
         case TOKEN_TYPE::PLUS:
-            return Builder.CreateFAdd(L, R, "f_addtmp");
+            return std::optional(Builder.CreateFAdd(L, R, "f_addtmp"));
             break;
         case TOKEN_TYPE::MINUS:
-            return Builder.CreateFSub(L, R, "f_subtmp");
+            return std::optional(Builder.CreateFSub(L, R, "f_subtmp"));
             break;
         case TOKEN_TYPE::ASTERIX:
-            return Builder.CreateFMul(L, R, "f_multmp");
+            return std::optional(Builder.CreateFMul(L, R, "f_multmp"));
             break;
         case TOKEN_TYPE::DIV:
-            return Builder.CreateFDiv(L, R, "f_divtmp");
+            return std::optional(Builder.CreateFDiv(L, R, "f_divtmp"));
             break;
         case TOKEN_TYPE::MOD:
             return LogErrorV("Cannot use modulo on floating numbers");
             break;
         case TOKEN_TYPE::EQ:
-            return Builder.CreateFCmpOEQ(L, R, "f_eqtmp");
+            return std::optional(Builder.CreateFCmpOEQ(L, R, "f_eqtmp"));
             break;
         case TOKEN_TYPE::NE:
-            return Builder.CreateFCmpONE(L, R, "f_netmp");
+            return std::optional(Builder.CreateFCmpONE(L, R, "f_netmp"));
             break;
         case TOKEN_TYPE::LE:
-            return Builder.CreateFCmpOLE(L, R, "f_letmp");
+            return std::optional(Builder.CreateFCmpOLE(L, R, "f_letmp"));
             break;
         case TOKEN_TYPE::LT:
-            return Builder.CreateFCmpOLT(L, R, "f_lttmp");
+            return std::optional(Builder.CreateFCmpOLT(L, R, "f_lttmp"));
             break;
         case TOKEN_TYPE::GE:
-            return Builder.CreateFCmpOGE(L, R, "f_getmp");
+            return std::optional(Builder.CreateFCmpOGE(L, R, "f_getmp"));
             break;
         case TOKEN_TYPE::GT:
-            return Builder.CreateFCmpOGT(L, R, "f_gttmp");
+            return std::optional(Builder.CreateFCmpOGT(L, R, "f_gttmp"));
             break;
         case TOKEN_TYPE::AND:
             L = Builder.CreateFPToSI(L, Type::getInt32Ty(TheContext),
                                      "li_temp");
             R = Builder.CreateFPToSI(R, Type::getInt32Ty(TheContext),
                                      "ri_temp");
-            return Builder CreateAnd(L, R, "andtmp");
+            return std::optional(Builder CreateAnd(L, R, "andtmp"));
         case TOKEN_TYPE::OR:
             L = Builder.CreateFPToSI(L, Type::getInt32Ty(TheContext),
                                      "li_temp");
             R = Builder.CreateFPToSI(R, Type::getInt32Ty(TheContext),
                                      "ri_temp");
-            return Builder.CreateOr(L, R, "ortmp");
+            return std::optional(Builder.CreateOr(L, R, "ortmp"));
         }
     else
         switch (Op) {
         case TOKEN_TYPE::PLUS:
-            return Builder.CreateAdd(L, R, "i_addtmp");
+            return std::optional(Builder.CreateAdd(L, R, "i_addtmp"));
             break;
         case TOKEN_TYPE::MINUS:
-            return Builder.CreateSub(L, R, "i_subtmp");
+            return std::optional(Builder.CreateSub(L, R, "i_subtmp"));
             break;
         case TOKEN_TYPE::ASTERIX:
-            return Builder.CreateMul(L, R, "i_multmp");
+            return std::optional(Builder.CreateMul(L, R, "i_multmp"));
             break;
         case TOKEN_TYPE::DIV:
-            return Builder.CreateSDiv(L, R, "i_divtmp");
+            return std::optional(Builder.CreateSDiv(L, R, "i_divtmp"));
             break;
         case TOKEN_TYPE::MOD: // TODO
-            return Builder.CreateSRem(L, R, "i_modtmp");
+            return std::optional(Builder.CreateSRem(L, R, "i_modtmp"));
             break;
         case TOKEN_TYPE::EQ:
-            return Builder.CreateICmpEQ(L, R, "i_eqtmp");
+            return std::optional(Builder.CreateICmpEQ(L, R, "i_eqtmp"));
             break;
         case TOKEN_TYPE::NE:
-            return Builder.CreateICmpNE(L, R, "i_netmp");
+            return std::optional(Builder.CreateICmpNE(L, R, "i_netmp"));
             break;
         case TOKEN_TYPE::LE:
-            return Builder.CreateICmpLE(L, R, "i_letmp");
+            return std::optional(Builder.CreateICmpLE(L, R, "i_letmp"));
             break;
         case TOKEN_TYPE::LT:
-            return Builder.CreateICmpLT(L, R, "i_lttmp");
+            return std::optional(Builder.CreateICmpLT(L, R, "i_lttmp"));
             break;
         case TOKEN_TYPE::GE:
-            return Builder.CreateICmpGE(L, R, "i_getmp");
+            return std::optional(Builder.CreateICmpGE(L, R, "i_getmp"));
             break;
         case TOKEN_TYPE::GT:
-            return Builder.CreateICmpGT(L, R, "i_gttmp");
+            return std::optional(Builder.CreateICmpGT(L, R, "i_gttmp"));
             break;
         case TOKEN_TYPE::AND:
-            return Builder.CreateAnd(L, R, "andtmp");
+            return std::optional(Builder.CreateAnd(L, R, "andtmp"));
         case TOKEN_TYPE::OR:
-            return Builder.CreateOr(L, R, "ortmp");
+            return std::optional(Builder.CreateOr(L, R, "ortmp"));
         }
-    return nullptr;
+    return std::optional(nullptr);
 }
 
-Value* UnaryOperatorASTnode::codegen() {
+std::optional<Value*> UnaryOperatorASTnode::codegen() {
     Value* f = Expr->codegen();
     if (!f)
         return nullptr;
     if (f->getType()->isFloatTy()) {
         if (Op == TOKEN_TYPE::MINUS)
-            return Builder.CreateFNeg(f, "f_negtmp");
+            return std::optional(Builder.CreateFNeg(f, "f_negtmp"));
         f = Builder.CreateFPToSI(f, "int_temp");
     }
     switch (Op) {
     case TOKEN_TYPE::NOT:
-        return Builder.CreateNot(f, "i_nottmp");
+        return std::optional(Builder.CreateNot(f, "i_nottmp"));
     case TOKEN_TYPE::MINUS:
-        return Builder.CreateNeg(f, "i_temp");
+        return std::optional(Builder.CreateNeg(f, "i_temp"));
     }
 }
 
-Value* DeclarationASTnode::codegen() {
+std::optional<Value*> DeclarationASTnode::codegen() {
     Type* typ;
     if (Type == TOKEN_TYPE::FLOAT_TOK) {
         typ = Type::getFloatTy(TheContext);
@@ -1166,14 +1172,114 @@ Value* DeclarationASTnode::codegen() {
     AllocaInst* var = CreateEntryBlockAlloca(
         Builder.GetInsertBlock()->getParent(), Name, typ);
     NamedValues.back().insert({Name, var}); // Add value to the local scope
-    return nullptr; // It is fine to return a null pointer since there is no
-                    // unsafe function that is going  to occur
+    return std::nullopt;
 }
 
-Value* AssignmentASTnode::codegen() {
-    Value* V = misc::findElem(Name)
+std::optional<Value*> AssignmentASTnode::codegen() {
+    Value* V = misc::findElem(Name);
+    if (!V)
+        return LogError("Variable named " + Name + " not found");
+    Value* rval = Rvalue->codegen();
+    if (!rval)
+        return nullptr;
+    if (V->getType()->isFloatTy()) {
+        if (rval->getType()->isInteger()) { // Cast to from Integer
+            rval = Builder.CreateSIToFP(rval, Type::getFloatTy(TheContext),
+                                        "to_floattmp");
+        }
+    } else {
+        if (rval->getType()->isFloatTy()) {
+            rval = Builder.CreateFPToSI(rval, Type::getInt32Ty(TheContext),
+                                        "to_inttmp");
+        }
+    }
+    return std::optional(
+        Builder.CreateStore(rval, V)); // TODO Check if it works
 }
 
+static Value* FunctionCallASTnode::codegen() { // TODO check if works
+    Function* CalleeF = TheModule->getFunction(Identifier);
+    if (!CalleeF)
+        return LogErrorV("No function found");
+
+    // Check for argument mismatch
+    if (CalleeF->arg_size() != Args.size())
+        return LogErrorV("Incorrect number of arguments passed");
+    std::vector<Value*> ArgsV;
+    for (const auto& arg : Args) {
+        ArgsV.push_back(arg->codegen());
+        if (!ArgsV.back())
+            return std::optional(nullptr);
+    }
+    return std::optional(Builder.CreateCall(CalleF, ArgsV, Identifier));
+}
+
+static std::optional<Value*> BodyASTnode::codegen() {
+    Function* TheFunction = Builder.GetInsertBlock()->getParent();
+    BasicBlock* BB = BasicBlock::Create(TheContext, "block", TheFunction);
+    Builder.SetInsertPoint(BB);
+    NamedValues.push_back(std::map<std::string, AllocaInst*>());
+    for (const auto& Local : LocalD) {
+        auto V = Local->codegen();
+        if (V.has_value() && !V.value()) {
+            return std::nullopt;
+        }
+    };
+    for (const auto& Stmt : StmtL) { // TODO feels buggy
+        auto V = Stmt->codegen();
+        if (V.has_value() && !V.value()) {
+            return std::nullopt;
+        }
+    }
+    NamedValues.pop_back();
+    return BB;
+}
+
+std::optional<Value*> IfStatementASTnode::codegen() {
+    Function* TheFunction = Builder.GetInsertBlock()->GetParent();
+    BasicBlock* true_     = BasicBlock::Create(TheContext, "then", TheFunction);
+    BasicBlock* end_      = BasicBlock::Create(TheContext, "end");
+    Value* cond           = Predicate->codegen();
+    if (!cond)
+        return misc::NULLOPTPTR;
+    if (Else.has_value()) {
+        BasicBlock* else_ = BasicBlock::Create(TheContext, "else");
+        BasicBlock.CreateCondBr(comp, true_, else_);
+        Builder.SetInsertPoint(else_);
+        auto val = Else.value()->codegen();
+        TheFunction->getBasicBlockList().push_back(else_);
+        if (!val)
+            return misc::NULLOPTPTR;
+        Builder.CreateBr(end_);
+    } else {
+        BasicBlock.CreateCondBr(comp, true_, end_);
+    }
+    Builder.SetInsertPoint(true_);
+    auto BodRes = Body->codegen();
+    if (!BodRes)
+        return misc::NULLOPTPTR;
+    TheFunction->getBasicBlockList().push_back(end_);
+    Builder.CreateBr(end_);
+    Builder.SetInsertPoint(end_);
+    return std::nullopt;
+}
+
+std::optional<Value*> FunctionASTnode::codegen() {
+    std::variant<std::vector<Type*>, Void> ArgsT;
+    if (std::holds_alternative<VectorAST>(Args)) {
+        std::vector<Type*> tmp(Args.size());
+        unsigned i = 0;
+        for (const auto& Arg : std::get<VectorAST>(Args)) {
+            ASTnode* f = Arg.get();
+            auto f2    = static_cast<DeclarationASTnode*>(f);
+            if (f2) {
+                // >
+            }
+            // tmp[i++] = Arg -, TOKEN_TYPE::FLOAT_TOK
+        }
+    }
+    return misc::NULLOPTPTR;
+}
 //===----------------------------------------------------------------------===//
 // AST Printer
 //===----------------------------------------------------------------------===//

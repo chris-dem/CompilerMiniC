@@ -1,25 +1,14 @@
+#include <deque>
 #include <iostream>
+#include <list>
 #include <optional>
 #include <sstream>
 #include <string>
 
-enum COL {
-    A = 1,
-    B = 2,
-};
-
-enum COL2 { C = 1, D = 2 };
-
-struct A_t {
-    int x;
-};
-
 int main() {
-    A_t x = {3};
-    A_t y = x;
-    x.x++;
-    std::cout << x.x << std::endl;
-    std::cout << y.x << std::endl;
-
+    std::list<int> li = {1, 2, 3};
+    std::deque<int, std::list<int>> st(li);
+    for (auto rit = st.rend()) {
+    }
     return 0;
 }
