@@ -352,6 +352,11 @@ UPtrASTnode parse::LogError(const char* str) {
     return nullptr;
 }
 
+template <typename T> std::unique_ptr<T> parse::LogErrorT(const char* str) {
+    fprintf(stderr, "Error: %s\n", str);
+    return nullptr;
+}
+
 template <typename T> std::optional<T> parse::LogErrorOpt(const char* str) {
     fprintf(stderr, "Error: %s\n", str);
     return std::nullopt;
@@ -403,13 +408,13 @@ static UPtrASTnode parse::ParseIdent() {
 /// args_list ::= expr arg_list'
 ///           | "," expr arg_list'
 /// @return Argument list
-static std::optional<VectorAST> parse::ParseArgs() { // TODO Fix
+static std::optional<VectorAST> parse::ParseArgs() { // TODO Fix/st
     VectorAST args;
     if (misc::checkTokenInGroup(CurTok.type)) {
         if (CurTok.type != TOKEN_TYPE::RPAR) {
             auto Ret = parse::ParseExpr();
             if (!Ret)
-                return std::nullopt; // Error in Expr
+                return std::nullopt; // TODO /Error in Expr
             args.push_back(std::move(Ret));
         }
         while (CurTok.type != TOKEN_TYPE::RPAR) {
@@ -421,7 +426,7 @@ static std::optional<VectorAST> parse::ParseArgs() { // TODO Fix
                 return std::nullopt; // Error in Expr
             args.push_back(std::move(Ret));
         }
-    } else if (CurTok.type == TOKEN_TYPE::INVALID) {
+    } else if (CurTok.type == TOKEN_TYPE::INVALID) { // TODO
         return parse::LogErrorOpt<VectorAST>("Invalid Character");
     }
     // epsilon
@@ -434,7 +439,7 @@ static UPtrASTnode parse::ParseFunctionCall() {
     auto cTok  = CurTok;
     auto Ident = cTok.lexeme;
     // Assuming Ident ( was checked by previous function
-    getNextToken(); // Eat Identifier
+    getNextToken(); // Eat Identifier //TODO CHECK
     getNextToken(); // Eat '('
     auto Args = parse::ParseArgs();
     if (!Args.has_value())
@@ -573,8 +578,9 @@ static UPtrASTnode parse::ParseRMdm() {
     auto curr = parse::ParseRp();
     if (!curr)
         return nullptr;
-    if (CurTok.type == TOKEN_TYPE::DIV || CurTok.type == TOKEN_TYPE::ASTERIX ||
-        CurTok.type == TOKEN_TYPE::MOD) {
+    while (CurTok.type == TOKEN_TYPE::DIV ||
+           CurTok.type == TOKEN_TYPE::ASTERIX ||
+           CurTok.type == TOKEN_TYPE::MOD) {
         auto PrevToken = CurTok;
         getNextToken(); // Absorb symbol
         auto RHS = parse::ParseRp();
@@ -583,18 +589,16 @@ static UPtrASTnode parse::ParseRMdm() {
         curr = std::make_unique<BinaryOperatorASTnode>(
             static_cast<TOKEN_TYPE>(PrevToken.type), std::move(curr),
             std::move(RHS));
-        // getNextToken(); // TODO check if needed
-        return std::move(curr);
     }
     // getNextToken(); // TODO check if needed
     return std::move(curr);
 }
 
 /// rp ::= (expr)
-///      | - expr
-///      | ! expr
+///      | - rval
+///      | ! rval
 ///      | IDENT
-///      | IDENT (expr)
+///      | IDENT (args)
 ///      | INT_LIT
 ///      | FLOAT_LIT
 ///      | BOOL_LIT
@@ -631,7 +635,7 @@ static UPtrASTnode parse::ParseRp() {
                CurTok.type == TOKEN_TYPE::NOT) { // - expr | ! expr
         auto PrevTok = CurTok;
         getNextToken(); // Consume unary
-        auto Expr = parse::ParseExpr();
+        auto Expr = parse::ParseRp();
         if (!Expr)
             return nullptr;
         auto UnaryNode = std::make_unique<UnaryOperatorASTnode>(
@@ -657,8 +661,7 @@ static UPtrASTnode parse::ParseRp() {
 
 static parse::StmtType parse::ParseStmt() {
     if (CurTok.type == TOKEN_TYPE::SC) {
-        getNextToken();              // Absorb SC
-        return parse::StmtType('c'); // Semi
+        getNextToken(); // Absorb SC
     }
     if (misc::checkTokenInGroup(CurTok.type)) { // Check for expr_stmt
         auto Expr = parse::ParseExpr();
@@ -731,6 +734,9 @@ static UPtrASTnode parse::ParseProgram() {
         auto DeclNode = parse::ParseDecl();
         if (!DeclNode)
             return nullptr;
+        if (DeclarationASTnode* b =
+                dynamic_cast<DeclarationASTnode*>(DeclNode.get()))
+            b->setIsGlobal(true);
         StmtLis.push_back(std::move(DeclNode));
     }
     return std::make_unique<ProgramASTnode>(std::move(ExternLis),
@@ -770,14 +776,14 @@ static UPtrASTnode parse::ParseDecl() {
     return parse::LogError("Invalid declaration");
 }
 
-static UPtrASTnode parse::ParseTypeIdent() {
+static std::unique_ptr<DeclarationASTnode> parse::ParseTypeIdent() {
     auto Var_Type = CurTok;
     if (!misc::checkTokenVarType(Var_Type.type))
-        return parse::LogError("No 1type found");
+        return parse::LogErrorT<DeclarationASTnode>("No type found");
     getNextToken(); // Consume Type
     auto Ident = CurTok;
     if (CurTok.type != TOKEN_TYPE::IDENT)
-        return parse::LogError("No Identifier found");
+        return parse::LogErrorT<DeclarationASTnode>("No Identifier found");
     getNextToken(); // Consume name
     return std::make_unique<DeclarationASTnode>(
         std::move(Ident.lexeme), static_cast<TOKEN_TYPE>(Var_Type.type));
@@ -792,9 +798,10 @@ static std::optional<Args_t> parse::ParseParams() {
         Decl = 'c';
         getNextToken(); // Consume void
     } else {
-        auto Arg_list = VectorAST(); // List of arguments
+        auto Arg_list = VectorDeclAST(); // List of arguments
         if (CurTok.type != TOKEN_TYPE::RPAR) {
             auto Decl = parse::ParseTypeIdent();
+
             if (!Decl)
                 return std::nullopt;
             Arg_list.push_back(std::move(Decl));
@@ -870,6 +877,8 @@ static UPtrASTnode parse::ParseFunction() {
     auto block = parse::ParseBlock(); // {} Consumed RBra
     if (!block)
         return nullptr;
+    // BodyASTnode* B = dynamic_cast<BodyASTnode*>(block.get());
+    // B->setIsMain(true);
     return std::make_unique<FunctionASTnode>(
         std::move(Params.value()), std::move(block), std::move(Ident.lexeme),
         static_cast<TOKEN_TYPE>(RetType.type));
@@ -951,15 +960,16 @@ static UPtrASTnode parse::ParseReturn() {
 }
 
 //===----------------------------------------------------------------------===//
-static void parser() {
+static UPtrASTnode parser() {
     // add body
     auto Ret = parse::ParseProgram();
     if (!Ret) {
         std::cout << "Error" << std::endl;
     } else {
         std::cout << "Parsed Successfully" << std::endl;
-        std::cout << Ret->to_string() << std::endl;
+        // std::cout << Ret->to_string() << std::endl;
     }
+    return std::move(Ret);
 }
 
 //===----------------------------------------------------------------------===//
@@ -967,8 +977,10 @@ static void parser() {
 //===----------------------------------------------------------------------===//
 
 // TODO FINISH CODEGEN (BY END OF WEEK)
+// TODO FIX std::variant to std::optional
 // TODO FIX OUTPUT (BY END OF WEEK)
-// TODO APPLY LAZY EVAL(BY END OF WEEK)
+// TODO CHECK VOID FUNC RET
+// TODO APPLY LAZY EVAL
 // TODO WARNING ON TYPE CONV
 
 static LLVMContext
@@ -982,33 +994,52 @@ static std::list<std::map<std::string, AllocaInst*>>
                  // scope Helps to keep track their llvm representation
                  // IE  : SymbolTable
 
-static std::map<std::string, Value*>
+static std::map<std::string,
+                GlobalVariable*>
     GlobalVariables; // Will keep of global variables
 
+/// @brief Value to hold of the return value of a function. Usage of optional
+/// for lazy instatiation, and for voids
+static std::optional<AllocaInst*> RetValue = std::nullopt;
+
 std::optional<Value*> LogErrorV(const char* str) {
-    LogError(Str);
-    return std::optional<nullptr>;
+    parse::LogError(str);
+    return misc::NULLOPTPTR;
 }
 
-static Value* misc::findElem(const std::string& Name) {
+llvm::Type* misc::convertToType(const TOKEN_TYPE& t) {
+    switch (t) {
+    case TOKEN_TYPE::BOOL_TOK:
+        // return Type::getInt1Ty(TheContext);
+    case TOKEN_TYPE::INT_TOK:
+        return Type::getInt32Ty(TheContext);
+    case TOKEN_TYPE::FLOAT_TOK:
+        return Type::getFloatTy(TheContext);
+    default:
+        return nullptr;
+    }
+    return nullptr;
+}
+
+llvm::Value* misc::CastToi32(llvm::Value* val) {
+    return Builder.CreateIntCast(val, Type::getInt32Ty(TheContext), true);
+}
+
+static AllocaInst* misc::findElemSC(const std::string& Name) {
     for (auto it = NamedValues.rbegin(); it != NamedValues.rend();
          it++) { // Start from the most local scope and go backwards
-        if (it[Name]) {
-            Type* typ;
-            if (it[Name]->getType()->isFloatTy()) {
-                typ = Type::getFloatTy(TheContext);
-            } else {
-                typ = Type::getInt32Ty(TheContext);
-            }
-            return Builder.CreateLoad(typ, it[Name], Name);
+        if ((*it)[Name]) {
+            return (*it)[Name];
         }
     }
+    return nullptr;
+}
+static GlobalVariable* misc::findElemGl(const std::string& Name) {
     return GlobalVariables[Name];
 }
-
 static AllocaInst* misc::CreateEntryBlockAlloca(Function* TheFunction,
                                                 const std::string& VarName,
-                                                const Type* typ) {
+                                                Type* typ) {
     IRBuilder<> TmpB(&TheFunction->getEntryBlock(),
                      TheFunction->getEntryBlock().begin());
     return TmpB.CreateAlloca(typ, 0, VarName.c_str());
@@ -1019,28 +1050,35 @@ std::optional<Value*> FloatASTnode::codegen() {
 }
 
 std::optional<Value*> IntASTnode::codegen() {
-    return std::optional(ConstantInt::get(TheContext, APInt(Val)));
+    return std::optional(ConstantInt::get(TheContext, APInt(32, Val, true)));
 }
 
 std::optional<Value*> BoolASTnode::codegen() {
     int val = Val ? 1 : 0;
-    return std::optional(ConstantInt::get(TheContext, APInt(val)));
+    return std::optional(ConstantInt::get(TheContext, APInt(32, Val, true)));
 }
 
 std::optional<Value*> IdentifierASTnode::codegen() {
     // Look up variable in function
-    Value* V = misc::findElem(Name, typ);
-    if (!V) {
-        return LogErrorV("Unknown variable");
+    AllocaInst* V =
+        misc::findElemSC(Val); // Returns either AllocaInst or Global Variable
+    if (V)
+        return std::optional(Builder.CreateLoad(V->getAllocatedType(), V));
+
+    auto Gl = misc::findElemGl(Val);
+    if (Gl) {
+        return std::optional(Builder.CreateLoad(Gl->getValueType(), Gl));
     }
-    return std::optional(V);
+    return LogErrorV("Unknown variable");
 }
 
 std::optional<Value*> BinaryOperatorASTnode::codegen() {
-    Value* L = LHS->codegen();
-    Value* R = RHS->codegen();
+    Value* L = LHS->codegen().value();
+    Value* R = RHS->codegen().value();
     if (!L || !R)
-        return std::optional(nullptr);
+        return misc::NULLOPTPTR;
+    if (L->getType()->isVoidTy() || R->getType()->isVoidTy())
+        return LogErrorV("Cannot assign return value from void function");
     if (L->getType()->getTypeID() !=
         R->getType()->getTypeID()) {     // L : Float R : Int or vice versa
         if (L->getType()->isFloatTy()) { // Case 1
@@ -1051,12 +1089,12 @@ std::optional<Value*> BinaryOperatorASTnode::codegen() {
                                      "floattmp");
         }
     }
-    // TODO ASK ABOUT ORDERING
     if (L->getType()->isFloatTy()) // Since both have the same value, check
                                    // if float
 
         switch (Op) {
         case TOKEN_TYPE::PLUS:
+            // outs() << *L << " - " << *R << "\n";
             return std::optional(Builder.CreateFAdd(L, R, "f_addtmp"));
             break;
         case TOKEN_TYPE::MINUS:
@@ -1072,37 +1110,44 @@ std::optional<Value*> BinaryOperatorASTnode::codegen() {
             return LogErrorV("Cannot use modulo on floating numbers");
             break;
         case TOKEN_TYPE::EQ:
-            return std::optional(Builder.CreateFCmpOEQ(L, R, "f_eqtmp"));
+            return std::optional(
+                misc::CastToi32(Builder.CreateFCmpOEQ(L, R, "f_eqtmp")));
             break;
         case TOKEN_TYPE::NE:
-            return std::optional(Builder.CreateFCmpONE(L, R, "f_netmp"));
+            return std::optional(
+                misc::CastToi32(Builder.CreateFCmpONE(L, R, "f_netmp")));
             break;
         case TOKEN_TYPE::LE:
-            return std::optional(Builder.CreateFCmpOLE(L, R, "f_letmp"));
+            return std::optional(
+                misc::CastToi32(Builder.CreateFCmpOLE(L, R, "f_letmp")));
             break;
         case TOKEN_TYPE::LT:
-            return std::optional(Builder.CreateFCmpOLT(L, R, "f_lttmp"));
+            return std::optional(
+                misc::CastToi32(Builder.CreateFCmpOLT(L, R, "f_lttmp")));
             break;
         case TOKEN_TYPE::GE:
             return std::optional(Builder.CreateFCmpOGE(L, R, "f_getmp"));
             break;
         case TOKEN_TYPE::GT:
-            return std::optional(Builder.CreateFCmpOGT(L, R, "f_gttmp"));
+            return std::optional(
+                misc::CastToi32(Builder.CreateFCmpOGT(L, R, "f_gttmp")));
             break;
         case TOKEN_TYPE::AND:
             L = Builder.CreateFPToSI(L, Type::getInt32Ty(TheContext),
                                      "li_temp");
             R = Builder.CreateFPToSI(R, Type::getInt32Ty(TheContext),
                                      "ri_temp");
-            return std::optional(Builder CreateAnd(L, R, "andtmp"));
+            return std::optional(Builder.CreateAnd(L, R, "andtmp"));
         case TOKEN_TYPE::OR:
             L = Builder.CreateFPToSI(L, Type::getInt32Ty(TheContext),
                                      "li_temp");
             R = Builder.CreateFPToSI(R, Type::getInt32Ty(TheContext),
                                      "ri_temp");
             return std::optional(Builder.CreateOr(L, R, "ortmp"));
+        default:
+            return misc::NULLOPTPTR;
         }
-    else
+    else // Else both int
         switch (Op) {
         case TOKEN_TYPE::PLUS:
             return std::optional(Builder.CreateAdd(L, R, "i_addtmp"));
@@ -1120,70 +1165,117 @@ std::optional<Value*> BinaryOperatorASTnode::codegen() {
             return std::optional(Builder.CreateSRem(L, R, "i_modtmp"));
             break;
         case TOKEN_TYPE::EQ:
-            return std::optional(Builder.CreateICmpEQ(L, R, "i_eqtmp"));
+            return std::optional(
+                misc::CastToi32(Builder.CreateICmpEQ(L, R, "i_eqtmp")));
             break;
         case TOKEN_TYPE::NE:
-            return std::optional(Builder.CreateICmpNE(L, R, "i_netmp"));
+            return std::optional(
+                misc::CastToi32(Builder.CreateICmpNE(L, R, "i_netmp")));
             break;
         case TOKEN_TYPE::LE:
-            return std::optional(Builder.CreateICmpLE(L, R, "i_letmp"));
+            return std::optional(
+                misc::CastToi32(Builder.CreateICmpSLE(L, R, "i_letmp")));
             break;
         case TOKEN_TYPE::LT:
-            return std::optional(Builder.CreateICmpLT(L, R, "i_lttmp"));
+            return std::optional(
+                misc::CastToi32(Builder.CreateICmpSLT(L, R, "i_lttmp")));
             break;
         case TOKEN_TYPE::GE:
-            return std::optional(Builder.CreateICmpGE(L, R, "i_getmp"));
+            return std::optional(
+                misc::CastToi32(Builder.CreateICmpSGE(L, R, "i_getmp")));
             break;
         case TOKEN_TYPE::GT:
-            return std::optional(Builder.CreateICmpGT(L, R, "i_gttmp"));
+            return std::optional(
+                misc::CastToi32(Builder.CreateICmpSGT(L, R, "i_gttmp")));
             break;
         case TOKEN_TYPE::AND:
             return std::optional(Builder.CreateAnd(L, R, "andtmp"));
         case TOKEN_TYPE::OR:
             return std::optional(Builder.CreateOr(L, R, "ortmp"));
+        default:
+            return misc::NULLOPTPTR;
         }
-    return std::optional(nullptr);
+    return misc::NULLOPTPTR; // TODO maybe fix
 }
 
 std::optional<Value*> UnaryOperatorASTnode::codegen() {
-    Value* f = Expr->codegen();
+    Value* f = Expr->codegen().value(); // Expect codegen to always return value
     if (!f)
         return nullptr;
+    if (f->getType()->isVoidTy())
+        return LogErrorV("Cannot assign return value from void function");
     if (f->getType()->isFloatTy()) {
         if (Op == TOKEN_TYPE::MINUS)
             return std::optional(Builder.CreateFNeg(f, "f_negtmp"));
-        f = Builder.CreateFPToSI(f, "int_temp");
+        f = Builder.CreateFPToSI(f, Type::getInt32Ty(TheContext),
+                                 "int_temp"); // Convert to int to apply not
     }
     switch (Op) {
     case TOKEN_TYPE::NOT:
-        return std::optional(Builder.CreateNot(f, "i_nottmp"));
+        return std::optional(misc::CastToi32(Builder.CreateICmpEQ(
+            f, ConstantInt::get(TheContext, APInt(32, 0, true)), "i_nottmp")));
     case TOKEN_TYPE::MINUS:
         return std::optional(Builder.CreateNeg(f, "i_temp"));
+    default:
+        return misc::NULLOPTPTR;
     }
+    return misc::NULLOPTPTR;
 }
 
 std::optional<Value*> DeclarationASTnode::codegen() {
-    Type* typ;
-    if (Type == TOKEN_TYPE::FLOAT_TOK) {
-        typ = Type::getFloatTy(TheContext);
+    if (!IsGlobal) {
+
+        AllocaInst* var =
+            misc::CreateEntryBlockAlloca(Builder.GetInsertBlock()->getParent(),
+                                         Ident, misc::convertToType(Type));
+        NamedValues.back().insert({Ident, var}); // Add value to the local scope
     } else {
-        typ = Type::getInt32Ty(TheContext);
+        GlobalVariable* g;
+        if (Type == TOKEN_TYPE::FLOAT_TOK) {
+            g = new GlobalVariable(
+                *(TheModule.get()), misc::convertToType(Type), false,
+                GlobalValue::CommonLinkage,
+                ConstantFP::get(Type::getFloatTy(TheContext), APFloat(0.0)));
+        } else {
+            g = new GlobalVariable(
+                *(TheModule.get()), misc::convertToType(Type), false,
+                GlobalValue::CommonLinkage,
+                ConstantInt::get(Type::getInt32Ty(TheContext),
+                                 APInt(32, 0, true)));
+        }
+        GlobalVariables[Ident] = g;
     }
-    AllocaInst* var = CreateEntryBlockAlloca(
-        Builder.GetInsertBlock()->getParent(), Name, typ);
-    NamedValues.back().insert({Name, var}); // Add value to the local scope
     return std::nullopt;
 }
 
 std::optional<Value*> AssignmentASTnode::codegen() {
-    Value* V = misc::findElem(Name);
-    if (!V)
-        return LogError("Variable named " + Name + " not found");
-    Value* rval = Rvalue->codegen();
+    Value* rval = Rvalue->codegen().value();
     if (!rval)
-        return nullptr;
-    if (V->getType()->isFloatTy()) {
-        if (rval->getType()->isInteger()) { // Cast to from Integer
+        return misc::NULLOPTPTR;
+    if (rval->getType()->isVoidTy())
+        return LogErrorV("Cannot assign return value from void function");
+    AllocaInst* V = misc::findElemSC(Name);
+    if (!V) {
+        GlobalVariable* Gl = misc::findElemGl(Name);
+        if (!Gl)
+            return LogErrorV("Variable not found");
+
+        if (Gl->getValueType()->isFloatTy()) {
+            if (rval->getType()->isIntegerTy()) { // Cast to from Integer
+                rval = Builder.CreateSIToFP(rval, Type::getFloatTy(TheContext),
+                                            "to_floattmp");
+            }
+        } else {
+            if (rval->getType()->isFloatTy()) {
+                rval = Builder.CreateFPToSI(rval, Type::getInt32Ty(TheContext),
+                                            "to_inttmp");
+            }
+        }
+        return std::optional(Builder.CreateStore(rval, Gl));
+    }
+
+    if (V->getAllocatedType()->isFloatTy()) {
+        if (rval->getType()->isIntegerTy()) { // Cast to from Integer
             rval = Builder.CreateSIToFP(rval, Type::getFloatTy(TheContext),
                                         "to_floattmp");
         }
@@ -1193,11 +1285,10 @@ std::optional<Value*> AssignmentASTnode::codegen() {
                                         "to_inttmp");
         }
     }
-    return std::optional(
-        Builder.CreateStore(rval, V)); // TODO Check if it works
+    return std::optional(Builder.CreateStore(rval, V));
 }
 
-static Value* FunctionCallASTnode::codegen() { // TODO check if works
+std::optional<Value*> FunctionCallASTnode::codegen() { // TODO check if works
     Function* CalleeF = TheModule->getFunction(Identifier);
     if (!CalleeF)
         return LogErrorV("No function found");
@@ -1207,79 +1298,267 @@ static Value* FunctionCallASTnode::codegen() { // TODO check if works
         return LogErrorV("Incorrect number of arguments passed");
     std::vector<Value*> ArgsV;
     for (const auto& arg : Args) {
-        ArgsV.push_back(arg->codegen());
+        ArgsV.push_back(arg->codegen().value());
         if (!ArgsV.back())
-            return std::optional(nullptr);
+            return misc::NULLOPTPTR;
     }
-    return std::optional(Builder.CreateCall(CalleF, ArgsV, Identifier));
+    return std::optional(Builder.CreateCall(CalleeF, ArgsV, Identifier));
 }
 
-static std::optional<Value*> BodyASTnode::codegen() {
-    Function* TheFunction = Builder.GetInsertBlock()->getParent();
-    BasicBlock* BB = BasicBlock::Create(TheContext, "block", TheFunction);
-    Builder.SetInsertPoint(BB);
+std::optional<Value*> BodyASTnode::codegen() {
     NamedValues.push_back(std::map<std::string, AllocaInst*>());
     for (const auto& Local : LocalD) {
         auto V = Local->codegen();
         if (V.has_value() && !V.value()) {
-            return std::nullopt;
+            return misc::NULLOPTPTR;
         }
     };
-    for (const auto& Stmt : StmtL) { // TODO feels buggy
-        auto V = Stmt->codegen();
+    for (size_t i = 0; i < StmtL.size(); i++) { // TODO feels buggy
+        auto V = StmtL[i]->codegen();
         if (V.has_value() && !V.value()) {
-            return std::nullopt;
+            return misc::NULLOPTPTR;
+        }
+        if (dynamic_cast<ReturnStatementASTnode*>(
+                StmtL[i].get())) {     // if return
+            if (i != StmtL.size() - 1) // If not final item
+                std::cout << "WARNING: Rest of the block will not be compiled"
+                          << std::endl; // Fix
+            break;
         }
     }
     NamedValues.pop_back();
-    return BB;
+    std::cout << "I am out" << std::endl;
+    return std::nullopt;
 }
 
-std::optional<Value*> IfStatementASTnode::codegen() {
-    Function* TheFunction = Builder.GetInsertBlock()->GetParent();
+std::optional<Value*> IfStatementASTnode::codegen() { // TODO check later
+    Function* TheFunction = Builder.GetInsertBlock()->getParent();
     BasicBlock* true_     = BasicBlock::Create(TheContext, "then", TheFunction);
     BasicBlock* end_      = BasicBlock::Create(TheContext, "end");
-    Value* cond           = Predicate->codegen();
-    if (!cond)
+    Value* cond = Predicate->codegen().value(); // should be non optional
+    if (cond->getType()->isFloatTy()) { // If the predicate is floating convert
+                                        // to int for boolean comparison
+        cond = Builder.CreateFPToSI(cond, Type::getInt32Ty(TheContext));
+    }
+    Value* comp = Builder.CreateICmpNE(
+        cond, ConstantInt::get(TheContext, APInt(32, 0, true))); // APInt 0 =>
+                                                                 // false
+    if (!comp) {
         return misc::NULLOPTPTR;
+    }
     if (Else.has_value()) {
         BasicBlock* else_ = BasicBlock::Create(TheContext, "else");
-        BasicBlock.CreateCondBr(comp, true_, else_);
+        Builder.CreateCondBr(comp, true_, else_);
+        Builder.SetInsertPoint(true_);
+        auto BodRes = Body->codegen();
+        if (BodRes.has_value() && !BodRes.value()) {
+            return misc::NULLOPTPTR;
+        }
+        TheFunction->getBasicBlockList().push_back(else_);
+        Builder.CreateBr(end_);
         Builder.SetInsertPoint(else_);
         auto val = Else.value()->codegen();
-        TheFunction->getBasicBlockList().push_back(else_);
-        if (!val)
+        if (val.has_value() && !val.value())
             return misc::NULLOPTPTR;
-        Builder.CreateBr(end_);
     } else {
-        BasicBlock.CreateCondBr(comp, true_, end_);
+        Builder.CreateCondBr(comp, true_, end_);
+        Builder.SetInsertPoint(true_);
+        auto BodRes = Body->codegen();
+        if (BodRes.has_value() && !BodRes.value()) {
+            return misc::NULLOPTPTR;
+        }
     }
-    Builder.SetInsertPoint(true_);
-    auto BodRes = Body->codegen();
-    if (!BodRes)
-        return misc::NULLOPTPTR;
     TheFunction->getBasicBlockList().push_back(end_);
     Builder.CreateBr(end_);
     Builder.SetInsertPoint(end_);
     return std::nullopt;
 }
 
-std::optional<Value*> FunctionASTnode::codegen() {
-    std::variant<std::vector<Type*>, Void> ArgsT;
-    if (std::holds_alternative<VectorAST>(Args)) {
-        std::vector<Type*> tmp(Args.size());
-        unsigned i = 0;
-        for (const auto& Arg : std::get<VectorAST>(Args)) {
-            ASTnode* f = Arg.get();
-            auto f2    = static_cast<DeclarationASTnode*>(f);
-            if (f2) {
-                // >
-            }
-            // tmp[i++] = Arg -, TOKEN_TYPE::FLOAT_TOK
-        }
+std::optional<Value*> WhileStatementASTnode::codegen() {
+    Function* TheFunction = Builder.GetInsertBlock()->getParent();
+    BasicBlock* header_ = BasicBlock::Create(TheContext, "header", TheFunction);
+    BasicBlock* while_  = BasicBlock::Create(TheContext, "body");
+    BasicBlock* after_  = BasicBlock::Create(TheContext, "after");
+    Builder.CreateBr(header_);
+    Builder.SetInsertPoint(header_);
+    auto PredVal = Predicate->codegen().value();
+    if (!PredVal)
+        return misc::NULLOPTPTR;
+    if (PredVal->getType()->isFloatTy()) {
+        PredVal = Builder.CreateFPToSI(PredVal, Type::getInt32Ty(TheContext));
     }
+    Value* comp = Builder.CreateICmpNE(
+        PredVal, ConstantInt::get(TheContext, APInt(32, 0, true)),
+        "while_comp");
+    TheFunction->getBasicBlockList().push_back(header_);
+    Builder.CreateCondBr(comp, while_, after_);
+    TheFunction->getBasicBlockList().push_back(while_);
+    Builder.SetInsertPoint(while_);
+
+    std::optional<Value*> ResBody = Body->codegen();
+    if (ResBody.has_value() && !ResBody.value())
+        return misc::NULLOPTPTR;
+    Builder.CreateBr(header_);
+    TheFunction->getBasicBlockList().push_back(after_);
+    Builder.SetInsertPoint(after_);
+    return std::nullopt;
+}
+
+std::optional<Value*> ExternFunctionDeclASTnode::codegen() {
+    //------------GENERATE PROTOTOTYPE------------
+    std::vector<Type*> ArgsT;
+    if (std::holds_alternative<VectorDeclAST>(Args)) {
+        const auto& vArg = std::get<VectorDeclAST>(Args);
+        std::vector<Type*> tmp;
+        for (const auto& Arg : vArg) {
+            if (Arg->getType() == TOKEN_TYPE::FLOAT_TOK) {
+                tmp.push_back(Type::getFloatTy(TheContext));
+            } else {
+                tmp.push_back(Type::getInt32Ty(TheContext));
+            }
+        }
+        ArgsT = tmp;
+    }
+    Type* VRetType;
+    switch (RetType) {
+    case TOKEN_TYPE::INT_TOK:
+    case TOKEN_TYPE::BOOL_TOK:
+        VRetType = Type::getInt32Ty(TheContext);
+        break;
+    case TOKEN_TYPE::FLOAT_TOK:
+        VRetType = Type::getFloatTy(TheContext);
+        break;
+    default:
+        VRetType = Type::getVoidTy(TheContext);
+    }
+    FunctionType* MyFT = FunctionType::get(VRetType, ArgsT, false);
+    if (!MyFT)
+        return LogErrorV("Error creating function type");
+    Function* F = Function::Create(MyFT, Function::ExternalLinkage, Ident,
+                                   TheModule.get());
+    if (!F)
+        return LogErrorV("Error creating function");
+    return std::nullopt;
+}
+
+std::optional<Value*> FunctionASTnode::codegen() {
+    //------------GENERATE PROTOTOTYPE------------
+    std::vector<Type*> ArgsT;
+    if (std::holds_alternative<VectorDeclAST>(Args)) {
+        const auto& vArg = std::get<VectorDeclAST>(Args);
+        std::vector<Type*> tmp;
+        for (const auto& Arg : vArg) {
+            if (Arg->getType() == TOKEN_TYPE::FLOAT_TOK) {
+                tmp.push_back(Type::getFloatTy(TheContext));
+            } else {
+                tmp.push_back(Type::getInt32Ty(TheContext));
+            }
+        }
+        ArgsT = tmp;
+    }
+    Type* VRetType;
+    switch (Ret) {
+    case TOKEN_TYPE::INT_TOK:
+    case TOKEN_TYPE::BOOL_TOK:
+        VRetType = Type::getInt32Ty(TheContext);
+        break;
+    case TOKEN_TYPE::FLOAT_TOK:
+        VRetType = Type::getFloatTy(TheContext);
+        break;
+    default:
+        VRetType = Type::getVoidTy(TheContext);
+    }
+    FunctionType* MyFT = FunctionType::get(VRetType, ArgsT, false);
+    Function* F = Function::Create(MyFT, Function::ExternalLinkage, Ident,
+                                   TheModule.get());
+
+    BasicBlock* BB = BasicBlock::Create(TheContext, "entry", F);
+    if (Ret != TOKEN_TYPE::VOID_TOK)
+        RetValue = std::optional(misc::CreateEntryBlockAlloca(
+            F, "ret_val", misc::convertToType(Ret)));
+    Builder.SetInsertPoint(BB);
+
+    //--------------END OF PROTOTYPE--------------
+    std::map<std::string, AllocaInst*> my_map; // Add values
+    size_t idx = 0;
+    for (auto& Arg : F->args()) {
+        const VectorDeclAST& f = std::get<VectorDeclAST>(Args);
+        Type* t                = misc::convertToType(f[idx]->getType());
+        if (!t)
+            return misc::NULLOPTPTR;
+
+        AllocaInst* Alloca =
+            misc::CreateEntryBlockAlloca(F, f[idx]->getIdent(), t);
+        Builder.CreateStore(&Arg, Alloca);
+        my_map[f[idx]->getIdent()] = Alloca;
+        Arg.setName(f[idx++]->getIdent());
+    }
+    NamedValues.push_back(std::move(my_map));
+    // Basic block code-gen
+    // Set BasicBlock to true
+    auto ret = Body->codegen();
+    if (!ret.has_value() || ret.value()) {
+        NamedValues.pop_back();
+        if (RetValue.has_value()) {
+            Value* ValToRet =
+                Builder.CreateLoad(misc::convertToType(Ret), RetValue.value());
+            Builder.CreateRet(ValToRet);
+        } else {                     // if nulloptional
+            Builder.CreateRetVoid(); // CREATE RIP
+        }
+        if (verifyFunction(*F, &outs())) {
+            std::cout << "Error validation" << std::endl;
+            return misc::NULLOPTPTR;
+        }
+        // Nullify output
+        RetValue.reset();
+        return std::nullopt;
+    }
+    F->eraseFromParent();
     return misc::NULLOPTPTR;
 }
+
+std::optional<Value*> ProgramASTnode::codegen() {
+    for (const auto& Ex : ExternL) {
+        auto Res = Ex->codegen();
+        if (Res.has_value() && !Res.value()) {
+            return misc::NULLOPTPTR;
+        }
+    }
+    for (const auto& Decl : DeclL) {
+        std::cout << "Funcs" << std::endl;
+        auto Res = Decl->codegen();
+        if (Res.has_value() && !Res.value()) {
+            return misc::NULLOPTPTR;
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<Value*> ReturnStatementASTnode::codegen() {
+    std::cout << "Yo I am at ret" << std::endl;
+    if (RetValue.has_value()) {   // Return with expression
+        if (!RetExpr.has_value()) // Return type has void
+            return LogErrorV(
+                "Function of type non-void does not return anything");
+        auto retval = RetExpr.value()
+                          ->codegen()
+                          .value(); // Will always return with expression
+        if (!retval)
+            return misc::NULLOPTPTR;
+        if (RetValue.value()->getAllocatedType()->getTypeID() !=
+            retval->getType()->getTypeID())
+            return LogErrorV("Incompatible return types");
+        Builder.CreateStore(retval, RetValue.value());
+    } else {                     // If ret type is void
+        if (RetExpr.has_value()) // and the returns tatement returns with
+                                 // expression
+            return LogErrorV("Functon of type void returns expression");
+    }
+    std::cout << "Set ret" << std::endl;
+    return std::nullopt;
+}
+
 //===----------------------------------------------------------------------===//
 // AST Printer
 //===----------------------------------------------------------------------===//
@@ -1310,6 +1589,7 @@ int main(int argc, char** argv) {
 
     // get the first token
     getNextToken();
+
     // Tests LEXER
     // while (CurTok.type != EOF_TOK) {
     //   fprintf(stderr, "Token: %s with type %d\n",
@@ -1325,7 +1605,7 @@ int main(int argc, char** argv) {
     TheModule = std::make_unique<Module>("mini-c", TheContext);
 
     // Run the parser now.
-    parser();
+    auto Tree = parser();
     fprintf(stderr, "Parsing Finished\n");
 
     //********************* Start printing final IR
@@ -1340,6 +1620,15 @@ int main(int argc, char** argv) {
         return 1;
     }
     // TheModule->print(errs(), nullptr); // print IR to terminal
+    auto Res = Tree->codegen();
+    // for (auto [_, val] : GlobalVariables) {
+    //     delete val;
+    // }v
+    if (Res.has_value() && !Res.value()) {
+        errs() << "Error";
+    } else {
+        std::cout << "Made it out" << std::endl;
+    }
     TheModule->print(dest, nullptr);
     //********************* End printing final IR
     //****************************

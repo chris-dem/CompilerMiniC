@@ -84,11 +84,12 @@ struct TOKEN {
 
 /// ASTnode - Base class for all AST nodes.
 class ASTnode {
-    std::string Name;
 
   public:
     virtual ~ASTnode();
-    virtual std::optional<Value*> codegen();
+    virtual std::optional<Value*> codegen() {
+        return nullptr;
+    }; // TODO FIx later
     virtual std::string to_string() const;
 };
 
@@ -119,7 +120,6 @@ using Void        = char;
 using UPtrASTnode = std::unique_ptr<ASTnode>;
 using OptionalPtr = std::optional<UPtrASTnode>;
 using VectorAST   = std::vector<UPtrASTnode>;
-using Args_t      = std::variant<VectorAST, Void>;
 
 /// BoolASTnode - Class for boolean
 class BoolASTnode : public ASTnode {
@@ -192,7 +192,7 @@ class AssignmentASTnode : public ASTnode {
   public:
     AssignmentASTnode(std::string Name, UPtrASTnode rvalue);
 
-    // virtual std::optional<Value*> codegen() override; // TODO Don't Rush
+    virtual std::optional<Value*> codegen() override;
     // return a sting representation of this AST node
     virtual std::string to_string() const override;
 };
@@ -207,7 +207,7 @@ class IfStatementASTnode : public ASTnode {
     IfStatementASTnode(UPtrASTnode predicate, UPtrASTnode body,
                        OptionalPtr else_body);
 
-    // virtual std::optional<Value*> codegen() override; // TODO Don't Rush
+    virtual std::optional<Value*> codegen() override; // TODO Don't Rush
     // return a sting representation of this AST node
     virtual std::string to_string() const override;
 };
@@ -220,7 +220,7 @@ class WhileStatementASTnode : public ASTnode {
   public:
     WhileStatementASTnode(UPtrASTnode predicate, UPtrASTnode body);
 
-    // virtual std::optional<Value*> codegen() override; // TODO Don't Rush
+    virtual std::optional<Value*> codegen() override; // TODO Don't Rush
 
     // return a sting representation of this AST node
     virtual std::string to_string() const override;
@@ -230,24 +230,37 @@ class WhileStatementASTnode : public ASTnode {
 class DeclarationASTnode : public ASTnode {
     std::string Ident;
     TOKEN_TYPE Type;
+    bool IsGlobal;
 
   public:
     DeclarationASTnode(std::string ident, TOKEN_TYPE type);
 
     virtual std::optional<Value*> codegen() override; // TODO Don't Rush
 
+    bool getIsGlobal();
+    void setIsGlobal(bool Gl);
     // return a sting representation of this AST node
+    std::string getIdent() const;
+    TOKEN_TYPE getType() const;
     virtual std::string to_string() const override;
 };
+
+using VectorDeclAST = std::vector<std::unique_ptr<DeclarationASTnode>>;
+using Args_t        = std::variant<VectorDeclAST, Void>;
 
 /// @brief  BodyASTnode -  Class for body statements
 class BodyASTnode : public ASTnode {
     VectorAST LocalD, StmtL;
+    bool IsMain;
 
   public:
     BodyASTnode(VectorAST localD, VectorAST stmtL);
 
     virtual std::optional<Value*> codegen() override; // TODO Don't Rush
+
+    void setIsMain(bool Val);
+
+    bool getIsMain();
 
     // return a sting representation of this AST node
     virtual std::string to_string() const override;
@@ -276,6 +289,7 @@ class ExternFunctionDeclASTnode : public ASTnode {
     ExternFunctionDeclASTnode(std::string Ident, TOKEN_TYPE type, Args_t args);
     // return a sting representation of this AST node
     virtual std::string to_string() const override;
+    virtual std::optional<Value*> codegen() override; // TODO Don't Rush
 };
 
 /// @brief FunctionASTnode - A class for function statements
@@ -300,6 +314,7 @@ class ReturnStatementASTnode : public ASTnode {
   public:
     ReturnStatementASTnode(OptionalPtr ret_expr);
 
+    virtual std::optional<Value*> codegen() override; // TODO Don't Rush
     virtual std::string to_string() const override;
 };
 #endif

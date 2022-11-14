@@ -21,6 +21,11 @@ namespace misc {
         Float = -4,
         Bool  = -5,
     };
+
+    template <typename T> bool checkNullOpt(const std::optional<T*>& t);
+    template <typename T>
+    bool checkNullOpt(const std::optional<std::unique_ptr<T>>& t);
+
     bool checkTokInGroup(const TOKEN& tok, const std::vector<TOKEN_TYPE>& arr);
     bool checkIdent(const TOKEN& t);
     bool checkTokenInGroup(const int& type);
@@ -28,10 +33,13 @@ namespace misc {
     bool checkTokenRetType(const int& type);
     std::string VarTypeToStr(const TOKEN_TYPE& t);
     static void restoreState(const TOKEN& prev);
-    static Value* findElem(const std::string& Name);
+    llvm::Value* CastToi32(llvm::Value* Val);
+    static llvm::AllocaInst* findElemSC(const std::string& Name);
+    static llvm::GlobalVariable* findElemGl(const std::string& Name);
     void calcBuilder(llvm::Value* val,
                      std::function<void(llvm::Value*)> func_float,
                      std::function<void(llvm::Value*)> func_int);
+    llvm::Type* convertToType(const TOKEN_TYPE& t);
 
     static llvm::AllocaInst* CreateEntryBlockAlloca(Function* TheFunction,
                                                     const std::string& VarName,
@@ -63,12 +71,13 @@ namespace parse {
     static std::unique_ptr<ASTnode> ParseReturn();
     static std::unique_ptr<ASTnode> ParseWhile();
     std::unique_ptr<ASTnode> LogError(const char* str);
+    template <typename T> std::unique_ptr<T> LogErrorT(const char* str);
     static std::unique_ptr<ASTnode> ParseTypeIdentSC();
     static std::unique_ptr<ASTnode> ParseProgram();
     static std::unique_ptr<ASTnode> ParseDecl();
     static std::unique_ptr<ASTnode> ParseExtern();
     static std::unique_ptr<ASTnode> ParseBlock();
-    static std::unique_ptr<ASTnode> ParseTypeIdent();
+    static std::unique_ptr<DeclarationASTnode> ParseTypeIdent();
     static std::optional<Args_t> ParseParams();
     static std::optional<UPtrASTnode> ParseElse();
     static std::optional<VectorAST> ParseStmtList();

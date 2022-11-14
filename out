@@ -1,7 +1,0 @@
-Parsed Successfully
-[Program node : 
-	ExternList : [[Extern Node : Identifier: print_int Type: int Args : [[ Declaration Node : Identifier : X Type: int], ] ], 
-]
-DeclarationList : [[ Function Defintion Node : ReturnType: int Identifier : addition Args : [[ Declaration Node : Identifier : n Type: int], [ Declaration Node : Identifier : m Type: int], ] Body : [
-[ Body node : Local Declarations : [[ Declaration Node : Identifier : result Type: int], ] StatementList : [[Assignement node : Ident : result Expr : [[BinaryOperator literal node : Operator : + LHS : [[Identifier literal node : Value : n]] RHS : [ [Identifier literal node : Value : m]] ]] ], [IfStatement node: Predicate : [[BinaryOperator literal node : Operator : == LHS : [[Identifier literal node : Value : n]] RHS : [ [Integer literal node : Value : 4]] ]] Body : [[ Body node : Local Declarations : [] StatementList : [[FunctionCall literal node : Identifier : print_int Args: [[BinaryOperator literal node : Operator : + LHS : [[Identifier literal node : Value : n]] RHS : [ [Identifier literal node : Value : m]] ], ] ], ] ]] ElseBody : [[ Body node : Local Declarations : [] StatementList : [[FunctionCall literal node : Identifier : print_int Args: [[BinaryOperator literal node : Operator : * LHS : [[Identifier literal node : Value : n]] RHS : [ [Identifier literal node : Value : m]] ], ] ], ] ]] ], , ] ]] ], 
- ]]

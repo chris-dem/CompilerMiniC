@@ -1,16 +1,8 @@
-extern int print_int(int X);
+// MiniC program to compute the value of pi
 
-int addition(int n, int m){
-	int result;
-	result = n + m;
-  
+int x;
 
-  if(n == 4) {
-    print_int(n+m);
-  }
-  else {
-    print_int(n*m);
-  }
-
-  return result;
+void pi(int m) {  
+  x = 3;
+  m = x + 3;
 }

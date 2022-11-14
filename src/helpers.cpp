@@ -1,7 +1,6 @@
 #include "helpers.hpp"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Type.h"
-#include "llvm/IR/Value.h"
 #include <iostream>
 #include <sstream>
 
@@ -9,6 +8,15 @@ std::string misc::convertNo(const TOKEN& tok) {
     std::stringstream ss;
     ss << '(' << tok.columnNo << ',' << tok.columnNo << ')';
     return ss.str();
+}
+
+template <typename T> bool misc::checkNullOpt(const std::optional<T*>& t) {
+    return t.has_value() && !t.value();
+}
+
+template <typename T>
+bool misc::checkNullOpt(const std::optional<std::unique_ptr<T>>& t) {
+    return t.has_value() && !t.value();
 }
 
 std::string misc::convertNo(const int& line, const int& col) {

@@ -167,7 +167,23 @@ std::string WhileStatementASTnode::to_string() const {
 //===----------------------------------------------------------------------===//
 // IdentifierASTnode
 DeclarationASTnode::DeclarationASTnode(std::string ident, TOKEN_TYPE type)
-    : Ident(std::move(ident)), Type(type) {}
+    : Ident(std::move(ident)), Type(type) {
+    this->IsGlobal = false;
+}
+bool DeclarationASTnode::getIsGlobal() {
+    return IsGlobal;
+}
+void DeclarationASTnode::setIsGlobal(bool gl) {
+    IsGlobal = gl;
+}
+
+std::string DeclarationASTnode::getIdent() const {
+    return this->Ident;
+}
+
+TOKEN_TYPE DeclarationASTnode::getType() const {
+    return Type;
+}
 
 std::string DeclarationASTnode::to_string() const {
     std::stringstream ss;
@@ -181,6 +197,13 @@ std::string DeclarationASTnode::to_string() const {
 // IdentifierASTnode
 BodyASTnode::BodyASTnode(VectorAST localD, VectorAST stmtL)
     : LocalD(std::move(localD)), StmtL(std::move(stmtL)) {}
+void BodyASTnode::setIsMain(bool Val) {
+    IsMain = Val;
+}
+
+bool BodyASTnode::getIsMain() {
+    return IsMain;
+}
 
 std::string BodyASTnode::to_string() const {
     std::stringstream ss;
@@ -228,8 +251,8 @@ std::string ExternFunctionDeclASTnode::to_string() const {
     std::stringstream ss;
     ss << "[Extern Node : Identifier: " << Ident << " Type: ";
     ss << misc::VarTypeToStr(RetType) << " Args : [";
-    if (std::holds_alternative<VectorAST>(Args)) {
-        for (const auto& arg : std::get<VectorAST>(Args)) {
+    if (std::holds_alternative<VectorDeclAST>(Args)) {
+        for (const auto& arg : std::get<VectorDeclAST>(Args)) {
             ss << arg->to_string() << ", ";
         }
     } else {
@@ -251,8 +274,8 @@ std::string FunctionASTnode::to_string() const {
     std::stringstream ss;
     ss << "[ Function Defintion Node : ReturnType: " << misc::VarTypeToStr(Ret)
        << " Identifier : " << Ident << " Args : [";
-    if (std::holds_alternative<VectorAST>(Args)) {
-        for (const auto& arg : std::get<VectorAST>(Args)) {
+    if (std::holds_alternative<VectorDeclAST>(Args)) {
+        for (const auto& arg : std::get<VectorDeclAST>(Args)) {
             ss << arg->to_string() << ", ";
         }
     } else {
