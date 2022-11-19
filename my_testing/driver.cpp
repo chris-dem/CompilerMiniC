@@ -1,7 +1,7 @@
 #include <cstdio>
 #include <iostream>
-#include <math.h>
-// clang++ driver.cpp addition.ll -o add
+
+// clang++ driver.cpp fibonacci.ll -o fib
 
 #ifdef _WIN32
 #define DLLEXPORT __declspec(dllexport)
@@ -20,9 +20,12 @@ extern "C" DLLEXPORT float print_float(float X) {
 }
 
 extern "C" {
-void pi();
+int fibonacci(int n);
 }
 
 int main() {
-    pi();
+    if (fibonacci(10) == 88)
+        std::cout << "PASSED Result: " << fibonacci(10) << std::endl;
+    else
+        std::cout << "FALIED Result: " << fibonacci(10) << std::endl;
 }

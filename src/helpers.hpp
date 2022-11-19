@@ -53,8 +53,7 @@ using Semi = char;
 using Err  = bool;
 
 namespace parse {
-    using StmtType = std::variant<std::unique_ptr<ASTnode>, Semi,
-                                  Err>; // TODO flip to optional
+    using StmtType = std::variant<std::unique_ptr<ASTnode>, Semi, Err>;
 
     static std::unique_ptr<ASTnode> ParseIntLit();
     static std::unique_ptr<ASTnode> ParseFloatLit();
@@ -80,7 +79,7 @@ namespace parse {
     static std::unique_ptr<ASTnode> ParseProgram();
     static std::unique_ptr<ASTnode> ParseDecl();
     static std::unique_ptr<ASTnode> ParseExtern();
-    static std::unique_ptr<ASTnode> ParseBlock();
+    static std::unique_ptr<BodyASTnode> ParseBlock();
     static std::unique_ptr<DeclarationASTnode> ParseTypeIdent();
     static std::optional<Args_t> ParseParams();
     static std::optional<UPtrASTnode> ParseElse();

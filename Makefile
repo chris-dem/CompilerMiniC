@@ -1,7 +1,7 @@
 CXX=clang++ -std=c++17 
-CFLAGS= -g -O3  `llvm-config --cppflags --ldflags --system-libs --libs all` -std=c++17 -frtti \
--Wno-unused-function -Wno-unknown-warning-option  -fno-exceptions  -Wno-unused-command-line-argument
-# -fno-rtti had that
+CFLAGS= -g -O3  `llvm-config --cppflags --ldflags --system-libs --libs all` -std=c++17  \
+-Wno-unused-function -Wno-unknown-warning-option  -fno-exceptions  -fno-rtti -Wno-unused-command-line-argument
+#  had that
 # mccomp: mccomp.cpp \n $(CXX) mccomp.cpp $(CFLAGS) -std=c++17 -o mccomp
 mccomp:  astnodes.o helpers.o mccomp.o  
 	$(CXX) object/*.o $(CFLAGS) -o mccomp

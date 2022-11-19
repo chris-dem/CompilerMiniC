@@ -98,7 +98,7 @@ class IntASTnode : public ASTnode {
 
   public:
     IntASTnode(TOKEN tok, int val);
-    virtual std::optional<Value*> codegen() override; // TODO Don't Rush
+    virtual std::optional<Value*> codegen() override;
     // return a sting representation of this AST node
     virtual std::string to_string(const size_t tab) const override;
 };
@@ -140,7 +140,7 @@ class IdentifierASTnode : public ASTnode {
 
   public:
     IdentifierASTnode(TOKEN tok, std::string val);
-    virtual std::optional<Value*> codegen() override; // TODO Don't Rush
+    virtual std::optional<Value*> codegen() override;
     // return a sting representation of this AST node
     virtual std::string to_string(const size_t tab) const override;
 };
@@ -153,7 +153,7 @@ class FunctionCallASTnode : public ASTnode {
 
   public:
     FunctionCallASTnode(TOKEN tok, std::string identifier, VectorAST args);
-    virtual std::optional<Value*> codegen() override; // TODO Don't Rush
+    virtual std::optional<Value*> codegen() override;
     // return a sting representation of this AST node
     virtual std::string to_string(const size_t tab) const override;
 };
@@ -184,7 +184,7 @@ class UnaryOperatorASTnode : public ASTnode {
   public:
     UnaryOperatorASTnode(TOKEN tok, TOKEN_TYPE op, UPtrASTnode expr);
 
-    virtual std::optional<Value*> codegen() override; // TODO Don't Rush
+    virtual std::optional<Value*> codegen() override;
     virtual std::string to_string(const size_t tab) const override;
 };
 
@@ -213,7 +213,7 @@ class IfStatementASTnode : public ASTnode {
     IfStatementASTnode(TOKEN tok, UPtrASTnode predicate, UPtrASTnode body,
                        OptionalPtr else_body);
 
-    virtual std::optional<Value*> codegen() override; // TODO Don't Rush
+    virtual std::optional<Value*> codegen() override;
     // return a sting representation of this AST node
     virtual std::string to_string(const size_t tab) const override;
 };
@@ -227,7 +227,7 @@ class WhileStatementASTnode : public ASTnode {
   public:
     WhileStatementASTnode(TOKEN tok, UPtrASTnode predicate, UPtrASTnode body);
 
-    virtual std::optional<Value*> codegen() override; // TODO Don't Rush
+    virtual std::optional<Value*> codegen() override;
 
     // return a sting representation of this AST node
     virtual std::string to_string(const size_t tab) const override;
@@ -238,12 +238,12 @@ class DeclarationASTnode : public ASTnode {
     std::string Ident;
     TOKEN_TYPE Type;
     bool IsGlobal;
-    TOKEN Tok; // TODO
+    TOKEN Tok;
 
   public:
     DeclarationASTnode(TOKEN tok, std::string ident, TOKEN_TYPE type);
 
-    virtual std::optional<Value*> codegen() override; // TODO Don't Rush
+    virtual std::optional<Value*> codegen() override;
 
     bool getIsGlobal();
     void setIsGlobal(bool Gl);
@@ -264,7 +264,7 @@ class BodyASTnode : public ASTnode {
   public:
     BodyASTnode(VectorAST localD, VectorAST stmtL);
 
-    virtual std::optional<Value*> codegen() override; // TODO Don't Rush
+    virtual std::optional<Value*> codegen() override;
 
     void setIsMain(bool Val);
 
@@ -281,7 +281,7 @@ class ProgramASTnode : public ASTnode {
   public:
     ProgramASTnode(VectorAST externL, VectorAST declL);
 
-    virtual std::optional<Value*> codegen() override; // TODO Don't Rush
+    virtual std::optional<Value*> codegen() override;
 
     // return a sting representation of this AST node
     virtual std::string to_string(const size_t tab) const override;
@@ -292,13 +292,13 @@ class ExternFunctionDeclASTnode : public ASTnode {
     std::string Ident;
     TOKEN_TYPE RetType;
     Args_t Args;
-    TOKEN Tok; // TODO
+    TOKEN Tok;
 
   public:
     ExternFunctionDeclASTnode(std::string Ident, TOKEN_TYPE type, Args_t args);
     // return a sting representation of this AST node
     virtual std::string to_string(const size_t tab) const override;
-    virtual std::optional<Value*> codegen() override; // TODO Don't Rush
+    virtual std::optional<Value*> codegen() override;
 };
 
 /// @brief FunctionASTnode - A class for function statements
@@ -314,7 +314,7 @@ class FunctionASTnode : public ASTnode {
                     TOKEN_TYPE ret);
 
     virtual std::string to_string(const size_t tab) const override;
-    virtual std::optional<Value*> codegen() override; // TODO Don't Rush
+    virtual std::optional<Value*> codegen() override;
 };
 
 /// @brief  ReturnStatementASTnode- A class for return statements
@@ -325,7 +325,7 @@ class ReturnStatementASTnode : public ASTnode {
     TOKEN Tok;
     ReturnStatementASTnode(TOKEN tok, OptionalPtr ret_expr);
 
-    virtual std::optional<Value*> codegen() override; // TODO Don't Rush
+    virtual std::optional<Value*> codegen() override;
     virtual std::string to_string(const size_t tab) const override;
 };
 #endif

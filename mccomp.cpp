@@ -756,9 +756,9 @@ static UPtrASTnode parse::ParseProgram() {
         auto DeclNode = parse::ParseDecl();
         if (!DeclNode)
             return nullptr;
-        if (DeclarationASTnode* b =
-                dynamic_cast<DeclarationASTnode*>(DeclNode.get()))
-            b->setIsGlobal(true);
+        // if (DeclarationASTnode* b =
+        //         dynamic_cast<DeclarationASTnode*>(DeclNode.get()))
+        //     b->setIsGlobal(true);
         StmtLis.push_back(std::move(DeclNode));
     }
     return std::make_unique<ProgramASTnode>(std::move(ExternLis),
@@ -782,9 +782,11 @@ static UPtrASTnode parse::ParseDecl() {
     if (CurTok.type == TOKEN_TYPE::SC) { // Var decl
         // parse decl
         getNextToken(); // Consume SC
-        return std::make_unique<DeclarationASTnode>(
+        auto Res = std::make_unique<DeclarationASTnode>(
             Ident, std::move(Ident.lexeme),
             static_cast<TOKEN_TYPE>(Var_Type.type));
+        Res->setIsGlobal(true);
+        return Res;
     } else if (CurTok.type == TOKEN_TYPE::LPAR) { // Fun decl
         auto Params = parse::ParseParams();       // () Consumed in parseblock
         if (!Params.has_value())
@@ -869,9 +871,11 @@ static UPtrASTnode parse::ParseExtern() {
 }
 
 // Do until local_delcs
-static UPtrASTnode parse::ParseBlock() {
-    if (CurTok.type != TOKEN_TYPE::LBRA)
-        return parse::LogError("No left bracket found");
+static std::unique_ptr<BodyASTnode> parse::ParseBlock() {
+    if (CurTok.type != TOKEN_TYPE::LBRA) {
+        parse::LogError("No left bracket found");
+        return nullptr;
+    }
     getNextToken(); // Consume LBRA
     auto LocalRes = parse::ParseLocalDelcs();
     if (!LocalRes.has_value()) // Error happened
@@ -880,8 +884,10 @@ static UPtrASTnode parse::ParseBlock() {
     auto StmtRes = parse::ParseStmtList();
     if (!StmtRes.has_value())
         return nullptr;
-    if (CurTok.type != TOKEN_TYPE::RBRA)
-        return parse::LogError("No right bracket found");
+    if (CurTok.type != TOKEN_TYPE::RBRA) {
+        parse::LogError("No right bracket found");
+        return nullptr;
+    }
     getNextToken(); // Consume RBRA
     auto StmtL = std::move(StmtRes.value());
     return std::make_unique<BodyASTnode>(std::move(LocalD), std::move(StmtL));
@@ -902,8 +908,7 @@ static UPtrASTnode parse::ParseFunction() {
     auto block = parse::ParseBlock(); // {} Consumed RBra
     if (!block)
         return nullptr;
-    // BodyASTnode* B = dynamic_cast<BodyASTnode*>(block.get());
-    // B->setIsMain(true);
+    block->setIsMain(true);
     return std::make_unique<FunctionASTnode>(
         std::move(Params.value()), std::move(block), std::move(Ident.lexeme),
         static_cast<TOKEN_TYPE>(RetType.type));
@@ -992,10 +997,12 @@ static UPtrASTnode parser() {
     // add body
     auto Ret = parse::ParseProgram();
     if (!Ret) {
-        std::cout << "Error" << std::endl;
+        llvm::errs() << "Error"
+                     << "\n";
     } else {
-        std::cout << "Parsed Successfully" << std::endl;
-        std::cout << Ret->to_string(0) << std::endl;
+        outs() << "Parsed Successfully"
+               << "\n";
+        outs() << Ret->to_string(0) << "\n";
     }
     return std::move(Ret);
 }
@@ -1004,10 +1011,10 @@ static UPtrASTnode parser() {
 // Code Generation
 //===----------------------------------------------------------------------===//
 
-// TODO FIX std::variant to std::optional
-// TODO WARNING ON TYPE CONV
-// TODO ensure bool true is 1
-// TODO ensure function call set
+/// SINCE CODEGEN RETURNS std::optional<Value*>
+/// ERROR IS DENOTED AS std::optional(nullptr)
+/// Error could have also been nullopt but I preferred to use it as as a
+/// function without the need to return
 
 static LLVMContext
     TheContext; // Opaque object that owns a lot of core llvm data structures
@@ -1024,8 +1031,6 @@ static std::map<std::string,
                 GlobalVariable*>
     GlobalVariables; // Will keep of global variables
 
-// static std::set<std::string> DefinedFunctions;
-
 /// @brief Value to hold of the return value of a function. Usage of optional
 /// for lazy instatiation, and for voids
 static std::optional<AllocaInst*> RetValue = std::nullopt;
@@ -1039,11 +1044,10 @@ std::optional<Value*> LogErrorV(std::string str) {
     fprintf(stderr, "Error: %s\n", str.c_str());
     return misc::NULLOPTPTR;
 }
-bool misc::checkValidExprType(llvm::Value* Val) { // TODO ASSIGN ERROR
+bool misc::checkValidExprType(llvm::Value* Val) {
     if (!Val)
         return false;
     if (Val->getType()->isVoidTy()) {
-        // LogErrorV("Cannot assign return value from void function");
         return false;
     }
     return true;
@@ -1062,9 +1066,7 @@ llvm::Type* misc::convertToType(const TOKEN_TYPE& t) {
     return nullptr;
 }
 
-llvm::Value* misc::CastToi32(llvm::Value* val) { // TODO check if it works
-    // std::cout << "HERE AT CAST" << std::endl;
-    // outs() << *val << "\n";
+llvm::Value* misc::CastToi32(llvm::Value* val) {
     return Builder.CreateIntCast(val, Type::getInt32Ty(TheContext), false);
 }
 
@@ -1090,23 +1092,42 @@ static AllocaInst* misc::CreateEntryBlockAlloca(Function* TheFunction,
     return TmpB.CreateAlloca(typ, 0, VarName.c_str());
 }
 
+/// @brief  Create Float Literal
+/// Always return a value
+/// @return Optional float literal
 std::optional<Value*> FloatASTnode::codegen() {
     return std::optional(ConstantFP::get(TheContext, APFloat(Val)));
 }
 
+/// @brief  Create Integer Literal
+/// Always return a value
+/// Ints are strictly i32 signed
+/// @return Optional int literal
 std::optional<Value*> IntASTnode::codegen() {
     return std::optional(ConstantInt::get(TheContext, APInt(32, Val, true)));
 }
 
+/// @brief  Create Boolean Literal
+/// Always return a value
+/// Booleans in C are denoted as follows : 1 for true and 0 for false
+/// Truthy values are all values != to 0
+/// By C convention => convert true to 1 and 0 to false
+/// @return Optional int literal
 std::optional<Value*> BoolASTnode::codegen() {
     int val = Val ? 1 : 0;
     return std::optional(ConstantInt::get(TheContext, APInt(32, Val, true)));
 }
 
+/// @brief Return value of Identifier
+/// Return value of Identifier
+/// The lookup process goes as follows
+/// Check the scope of the function, if not found, check global scope
+/// If empty => return error
+/// Else reutrn optional value loaded
+/// @return optional loaded value
 std::optional<Value*> IdentifierASTnode::codegen() {
     // Look up variable in function
-    AllocaInst* V =
-        misc::findElemSC(Val); // Returns either AllocaInst or Global Variable
+    AllocaInst* V = misc::findElemSC(Val);
     if (V)
         return std::optional(Builder.CreateLoad(V->getAllocatedType(), V));
 
@@ -1116,19 +1137,34 @@ std::optional<Value*> IdentifierASTnode::codegen() {
     }
     return LogErrorV(std::string("Unknown variable ") + misc::TokToString(Tok));
 }
-
+/// @brief Binary Operator node code generation
+/// Two parts:
+/// For strict evaluation operators (every operator other than && and ||),
+/// evaluate both sides check is we had a case (void_function() + 3) => enforce
+/// that void functions cannot return values. In addition upcast sides to the
+/// type that will fit the most data, for example : int, int => int,int ||
+/// float,float => float,float || (float , int | int,float) => float,float.
+/// Reminder that boolean is treated as as i32 in both this language and C so no
+/// need to account for additional case. For lazy operators, evaluate lhs and
+/// depending on the type and result evaluate rhs,(more details on the
+/// functions). Reminder, all comparison operators are casted to i32 since by
+/// default they return i1 != i32. This causes issues depending on the context
+/// and causes llvm to crash. To avoid this, enforce result to be i32. In i32 is
+/// casted to unsigned because signed causes i1 true to be -1, which does not
+/// make sense.
+/// @return
 std::optional<Value*> BinaryOperatorASTnode::codegen() {
     Value* L = LHS->codegen().value();
-    if (misc::checkStrictEval(Op)) {
+    if (misc::checkStrictEval(Op)) { // For strict operators
         Value* R = RHS->codegen().value();
-        if (!L || !R)
+        if (!L || !R) // Check if both sides are valid
             return misc::NULLOPTPTR;
-        if (L->getType()->isVoidTy()) // TODO improve if time
+        if (L->getType()->isVoidTy()) // Check if lhs is void
             return LogErrorV(
                 std::string(
                     "Cannot assign return value from void function at line ") +
                 std::to_string(Tok.lineNo) + " check LHS");
-        if (R->getType()->isVoidTy()) // TODO improve if time
+        if (R->getType()->isVoidTy()) // Check if rhs is void
             return LogErrorV(
                 std::string(
                     "Cannot assign return value from void function at line ") +
@@ -1159,36 +1195,37 @@ std::optional<Value*> BinaryOperatorASTnode::codegen() {
             case TOKEN_TYPE::DIV:
                 return std::optional(Builder.CreateFDiv(L, R, "f_divtmp"));
                 break;
-            case TOKEN_TYPE::MOD:
+            case TOKEN_TYPE::MOD: // I denoted the modulo of floating numbers as
+                                  // a semantic issue
                 return LogErrorV(
                     std::string("Cannot use modulo on floating numbers at ") +
                     misc::TokToString(Tok));
                 break;
             case TOKEN_TYPE::EQ:
-                return std::optional(
-                    misc::CastToi32(Builder.CreateFCmpOEQ(L, R, "f_eqtmp")));
+                return std::optional(misc::CastToi32(Builder.CreateFCmpOEQ(
+                    L, R, "f_eqtmp"))); // Enforce result to be i32
                 break;
             case TOKEN_TYPE::NE:
-                return std::optional(
-                    misc::CastToi32(Builder.CreateFCmpONE(L, R, "f_netmp")));
+                return std::optional(misc::CastToi32(Builder.CreateFCmpONE(
+                    L, R, "f_netmp"))); // Enforce result to be i32
                 break;
             case TOKEN_TYPE::LE:
-                return std::optional(
-                    misc::CastToi32(Builder.CreateFCmpOLE(L, R, "f_letmp")));
+                return std::optional(misc::CastToi32(Builder.CreateFCmpOLE(
+                    L, R, "f_letmp"))); // Enforce result to be i32
                 break;
             case TOKEN_TYPE::LT:
-                return std::optional(
-                    misc::CastToi32(Builder.CreateFCmpOLT(L, R, "f_lttmp")));
+                return std::optional(misc::CastToi32(Builder.CreateFCmpOLT(
+                    L, R, "f_lttmp"))); // Enforce result to be i32
                 break;
             case TOKEN_TYPE::GE:
-                return std::optional(
-                    misc::CastToi32(Builder.CreateFCmpOGE(L, R, "f_getmp")));
+                return std::optional(misc::CastToi32(Builder.CreateFCmpOGE(
+                    L, R, "f_getmp"))); // Enforce result to be i32
                 break;
             case TOKEN_TYPE::GT:
-                return std::optional(
-                    misc::CastToi32(Builder.CreateFCmpOGT(L, R, "f_gttmp")));
+                return std::optional(misc::CastToi32(Builder.CreateFCmpOGT(
+                    L, R, "f_gttmp"))); // Enforce result to be i32
                 break;
-            default:
+            default: // Impossible case
                 return misc::NULLOPTPTR;
             }
         else // Else both int
@@ -1205,7 +1242,7 @@ std::optional<Value*> BinaryOperatorASTnode::codegen() {
             case TOKEN_TYPE::DIV:
                 return std::optional(Builder.CreateSDiv(L, R, "i_divtmp"));
                 break;
-            case TOKEN_TYPE::MOD: // TODO
+            case TOKEN_TYPE::MOD:
                 return std::optional(Builder.CreateSRem(L, R, "i_modtmp"));
                 break;
             case TOKEN_TYPE::EQ:
@@ -1236,47 +1273,71 @@ std::optional<Value*> BinaryOperatorASTnode::codegen() {
                 return misc::NULLOPTPTR;
             }
     }
-    if (Op == TOKEN_TYPE::OR) {
+    if (Op == TOKEN_TYPE::OR) { // Apply lazy or
         Value* or_val = lazy_or(L);
         if (!or_val)
             return misc::NULLOPTPTR;
         return std::optional(or_val);
-    }
+    } // If operator is not in anything previous
     Value* and_val = lazy_and(L);
     if (!and_val)
         return misc::NULLOPTPTR;
     return std::optional(and_val);
 }
-
+/// @brief Lazy and evaluation
+/// @param LHS value of LHS
+/// The way lazy and works is as follows:
+/// I create three blocks, true case, false case and merge case
+/// Using the truthy value of LHS, If it is true => In the true block get the
+/// value of the rhs, Else if false create a false value, and by using the
+/// PHInode, get the phinode of the expression using the two blocks
+/// PHInode made more sense to be used in this scenario since it is easier to
+/// handle and there are a limited number of paths
+/// @return
 Value* BinaryOperatorASTnode::lazy_and(Value* LHS) {
     // Check if true
     Value* comp = misc::check_truthy(LHS);
-    // Return optional value true
+    // Create the conditional blocks
     Function* TheFunction = Builder.GetInsertBlock()->getParent();
     BasicBlock* true_  = BasicBlock::Create(TheContext, "true_", TheFunction);
     BasicBlock* false_ = BasicBlock::Create(TheContext, "false_");
     BasicBlock* merge_ = BasicBlock::Create(TheContext, "merge_");
+    // Depending of the value of the LHS, jump to true block, or to false
     Builder.CreateCondBr(comp, true_, false_);
-    Builder.SetInsertPoint(true_);
-    Value* true_val = RHS->codegen().value();
-    if (!true_val) // Error
+    Builder.SetInsertPoint(true_);            // If true
+    Value* true_val = RHS->codegen().value(); // Evaluate rhs
+    if (!true_val)                            // Error
         return nullptr;
-    true_val = misc::CastToi32(misc::check_truthy(true_val));
-    Builder.CreateBr(merge_);
-    true_ = Builder.GetInsertBlock();
-    TheFunction->getBasicBlockList().push_back(false_);
-    Builder.SetInsertPoint(false_);
-    Value* false_val = ConstantInt::get(TheContext, APInt(32, 0, true));
-    Builder.CreateBr(merge_);
+    true_val = misc::CastToi32(
+        misc::check_truthy(true_val)); // Cast to i32 truthy value
+    Builder.CreateBr(merge_);          // Create jump to merged out come
+    true_ = Builder.GetInsertBlock(); // Set true_ as to the current insertblock
+    TheFunction->getBasicBlockList().push_back(false_); // Create false_ block
+    Builder.SetInsertPoint(false_); // Set insertion of data to false_
+    Value* false_val = ConstantInt::get(
+        TheContext, APInt(32, 0, true)); // Create 0 consant => false by c rules
+    Builder.CreateBr(merge_);            // Jump to merged block
     false_ = Builder.GetInsertBlock();
     TheFunction->getBasicBlockList().push_back(merge_);
     Builder.SetInsertPoint(merge_);
-    PHINode* PN =
+    PHINode* PN = // Create a phinode with 2 possible values
         Builder.CreatePHI(Type::getInt32Ty(TheContext), 2, "lazy_and");
-    PN->addIncoming(true_val, true_);
-    PN->addIncoming(false_val, false_);
-    return PN;
+    PN->addIncoming(true_val, true_);   // true value from the true block
+    PN->addIncoming(false_val, false_); // false value from the false block
+    return PN;                          // return value
 }
+
+/// @brief Lazy and evaluation
+/// @param LHS value of LHS
+/// The way lazy and works is as follows:
+/// I create three blocks, true case, false case and merge case
+/// Using the truthy value of LHS, If it is true => In the true block I return
+/// true value , Else if false return evaluated rhs, and by using the PHInode,
+/// get the final result by choosing which phivalue to pick from which phi
+/// block. Using the two blocks PHInode made more sense to be used in this
+/// scenario since it is easier to handle and there are a limited number of
+/// paths
+/// @return
 Value* BinaryOperatorASTnode::lazy_or(Value* LHS) {
     // Check if true
     Value* comp = misc::check_truthy(LHS);
@@ -1287,7 +1348,8 @@ Value* BinaryOperatorASTnode::lazy_or(Value* LHS) {
     BasicBlock* merge_ = BasicBlock::Create(TheContext, "merge_");
     Builder.CreateCondBr(comp, true_, false_);
     Builder.SetInsertPoint(true_);
-    Value* true_val = ConstantInt::get(TheContext, APInt(32, 1, true));
+    Value* true_val =
+        ConstantInt::get(TheContext, APInt(32, 1, true)); // Set to true
     Builder.CreateBr(merge_);
     true_ = Builder.GetInsertBlock();
     TheFunction->getBasicBlockList().push_back(false_);
@@ -1295,8 +1357,6 @@ Value* BinaryOperatorASTnode::lazy_or(Value* LHS) {
     Value* false_val = RHS->codegen().value();
     if (!false_val) // Error
         return nullptr;
-    // outs() << "Are you da way? "
-    //        << *misc::CastToi32(misc::check_truthy(false_val)) << "\n";
     false_val = misc::CastToi32(misc::check_truthy(false_val));
     Builder.CreateBr(merge_);
     false_ = Builder.GetInsertBlock();
@@ -1308,6 +1368,7 @@ Value* BinaryOperatorASTnode::lazy_or(Value* LHS) {
     return PN;
 }
 
+// Compare values if they are unequal to their corresponding type of 0
 Value* misc::check_truthy(Value* LHS) {
     if (LHS->getType()->isFloatTy())
         return Builder.CreateFCmpONE(LHS,
@@ -1316,6 +1377,12 @@ Value* misc::check_truthy(Value* LHS) {
         LHS, ConstantInt::get(TheContext, APInt(32, 0, true)));
 }
 
+/// @brief Unary node codegen
+/// Same idea as above with the void values => force void function to not be
+/// evaluated in expression
+/// if floating and operator is neg => make neg
+/// else convert to i1 and negate
+/// @return
 std::optional<Value*> UnaryOperatorASTnode::codegen() {
     Value* f = Expr->codegen().value(); // Expect codegen to always return value
     if (!f)
@@ -1343,20 +1410,24 @@ std::optional<Value*> UnaryOperatorASTnode::codegen() {
     return misc::NULLOPTPTR;
 }
 
+/// @brief Delcaration code generation
+/// Made specifically for either local declarations or global declarations
+/// @return
 std::optional<Value*> DeclarationASTnode::codegen() {
-    if (!IsGlobal) {
-        std::cout << "Creating " << Ident << std::endl;
-
-        if (misc::findElemSC(Ident))
+    if (!IsGlobal) { // If value is not global
+        if (NamedValues.back().find(Ident) !=
+            NamedValues.back().find(
+                Ident)) // Check if it was already declared in the local scope,
+                        // and specifically in the most recent one
             return LogErrorV("Redeclaration of variable " + Ident + " " +
                              misc::TokToString(Tok));
         AllocaInst* var =
             misc::CreateEntryBlockAlloca(Builder.GetInsertBlock()->getParent(),
                                          Ident, misc::convertToType(Type));
         NamedValues.back()[Ident] = var; // Add value to the local scope
-        std::cout << "At end " << Ident << std::endl;
     } else {
-        if (misc::findElemGl(Ident))
+        if (misc::findElemGl(Ident)) // Check if the variable was already
+                                     // defined as a global variable
             return LogErrorV("Redeclaration of variable " + Ident + " " +
                              misc::TokToString(Tok));
         GlobalVariable* g;
@@ -1374,35 +1445,39 @@ std::optional<Value*> DeclarationASTnode::codegen() {
         }
         GlobalVariables[Ident] = g;
     }
-    return std::nullopt;
+    return std::nullopt; // No need to returna anything => nulloptional
 }
-
+/// @brief Code generation for the assignment
+/// Get the value in the RHS of the equality
+/// Implicitly convert the type of the result to the  type of the variable
+/// @return
 std::optional<Value*> AssignmentASTnode::codegen() {
     Value* rval = Rvalue->codegen().value();
-    if (!rval)
+    if (!rval) // Get the Rvalue
         return misc::NULLOPTPTR;
-    if (rval->getType()->isVoidTy())
+    if (rval->getType()->isVoidTy()) // Check if it was void
         return LogErrorV("Cannot assign return value from void function  " +
                          misc::TokToString(Tok));
-    // std::cout << "Missing name " << Name << std::endl;
     AllocaInst* V = misc::findElemSC(Name);
     if (!V) {
         GlobalVariable* Gl = misc::findElemGl(Name);
         if (!Gl)
             return LogErrorV("Variable not found " + misc::TokToString(Tok));
 
-        if (Gl->getValueType()->isFloatTy()) {
+        if (Gl->getValueType()->isFloatTy()) {    // if global val stores floats
             if (rval->getType()->isIntegerTy()) { // Cast to from Integer
                 rval = Builder.CreateSIToFP(rval, Type::getFloatTy(TheContext),
                                             "to_floattmp");
             }
         } else {
-            if (rval->getType()->isFloatTy()) {
+            if (rval->getType()
+                    ->isFloatTy()) { // Vice verca for local declaration
                 rval = Builder.CreateFPToSI(rval, Type::getInt32Ty(TheContext),
                                             "to_inttmp");
             }
         }
-        return std::optional(Builder.CreateStore(rval, Gl));
+        Builder.CreateStore(rval, Gl); // Store the value in the global variable
+        return std::optional(rval);    // return stored value
     }
 
     if (V->getAllocatedType()->isFloatTy()) {
@@ -1416,10 +1491,15 @@ std::optional<Value*> AssignmentASTnode::codegen() {
                                         "to_inttmp");
         }
     }
-    Builder.CreateStore(rval, V);
-    return std::optional(rval);
+    Builder.CreateStore(rval, V); // Store the value in the local variable
+    return std::optional(rval);   // return stored value
 }
-
+/// @brief Code generation for the functuon call
+/// Check if the function exists, then check if the arguments match the function
+/// type description. If they match check if the types are incompatible, throw a
+/// warning and cast
+/// Call function
+/// @return
 std::optional<Value*> FunctionCallASTnode::codegen() {
 
     Function* CalleeF = TheModule->getFunction(Identifier);
@@ -1431,11 +1511,11 @@ std::optional<Value*> FunctionCallASTnode::codegen() {
         return LogErrorV("Incorrect number of arguments passed " +
                          misc::TokToString(Tok));
     std::vector<Value*> ArgsV;
-    auto FArgs = CalleeF->getFunctionType()->params();
+    auto FArgs = CalleeF->getFunctionType()->params(); // get types of functions
     size_t idx = 0;
     for (const auto& arg : Args) {
         auto Val = arg->codegen().value();
-        if (Val->getType() != FArgs[idx]) {
+        if (Val->getType() != FArgs[idx]) { // Check if incompatible types
             std::cout
                 << "WARNING: Implicit conversion at function call at function "
                 << Identifier << " line " << std::to_string(Tok.lineNo)
@@ -1457,32 +1537,45 @@ std::optional<Value*> FunctionCallASTnode::codegen() {
     return std::optional(Builder.CreateCall(CalleeF, ArgsV));
 }
 
+/// @brief Code generation for the ASTnode
+/// Push a new map at the end of the list to indicate deepest scope
+/// Code gen for local delc and check for errors
+/// For statements :  Generate the code for every statement. Even if the
+/// statement is a return, I still allow for the rest of the code to be
+/// generated, to check for any semnatic errors
+/// @return
 std::optional<Value*> BodyASTnode::codegen() {
+    // if (!IsMain) { // TODO If time do
+
     NamedValues.push_back(std::map<std::string, AllocaInst*>());
+    // }
     for (const auto& Local : LocalD) {
         auto V = Local->codegen();
         if (V.has_value() && !V.value()) {
             return misc::NULLOPTPTR;
         }
     };
-    for (size_t i = 0; i < StmtL.size(); i++) { // TODO feels buggy
+    for (size_t i = 0; i < StmtL.size(); i++) {
         auto V = StmtL[i]->codegen();
         if (V.has_value() && !V.value()) {
             return misc::NULLOPTPTR;
         }
-        if (auto Ret = dynamic_cast<ReturnStatementASTnode*>(
-                StmtL[i].get())) {     // if return
-            if (i != StmtL.size() - 1) // If not final item
-                std::cout << "WARNING: Rest of the block will not be compiled "
-                          << misc::TokToString(Ret->Tok) << std::endl; // Fix
-            break;
-        }
     }
+    // if(!IsMain) {
     NamedValues.pop_back();
-    // std::cout << "I am out" << std::endl;
-    return std::nullopt;
+    // }
+    return std::nullopt; // If all good return nulloptional to indicate
+                         // everything is fine
 }
 
+/// @brief If statement code generation
+/// If->then works the same way as in the lecture slides
+/// Extra precaussion in the types to ensure comparison is always between i32
+/// and i32. Usage of (value in cond) != false to convert i32 to i1. Else blocks
+/// works by create the block for the else, make the cond jump between true and
+/// else body, generate code for true and jump to after. Since then block was
+/// fully genertaed push back the else code and un ump to after and continue
+/// @return
 std::optional<Value*> IfStatementASTnode::codegen() {
     Function* TheFunction = Builder.GetInsertBlock()->getParent();
     BasicBlock* true_     = BasicBlock::Create(TheContext, "then", TheFunction);
@@ -1690,7 +1783,6 @@ std::optional<Value*> ProgramASTnode::codegen() {
         }
     }
     for (const auto& Decl : DeclL) {
-        std::cout << "Funcs" << std::endl;
         auto Res = Decl->codegen();
         if (Res.has_value() && !Res.value()) {
             return misc::NULLOPTPTR;
@@ -1773,7 +1865,11 @@ int main(int argc, char** argv) {
 
     // Run the parser now.
     auto Tree = parser();
-    fprintf(stderr, "Parsing Finished\n");
+    if (Tree) {
+        fprintf(stderr, "Parsing Finished\n");
+    } else {
+        return -1; // Error
+    }
 
     //********************* Start printing final IR
     //**************************
@@ -1786,12 +1882,8 @@ int main(int argc, char** argv) {
         errs() << "Could not open file: " << EC.message();
         return 1;
     }
-    TheModule->print(errs(), nullptr); // print IR to terminal
-                                       // auto Res = Tree->codegen();
+    // TheModule->print(errs(), nullptr); // print IR to terminal
     auto Res = Tree->codegen();
-    // for (auto [_, val] : GlobalVariables) {
-    //     delete val;
-    // }v
     if (Res.has_value() && !Res.value()) {
         errs() << "Error";
     } else {
