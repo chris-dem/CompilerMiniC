@@ -24,7 +24,26 @@ std::string misc::convertNo(const int& line, const int& col) {
     ss << '(' << line << ',' << col << ')';
     return ss.str();
 }
+bool misc::checkStrictEval(const TOKEN_TYPE& type) {
+    switch (type) {
+    case TOKEN_TYPE::PLUS:    // +
+    case TOKEN_TYPE::ASTERIX: // *
+    case TOKEN_TYPE::MINUS:   // -
+    case TOKEN_TYPE::DIV:     // /
+    case TOKEN_TYPE::MOD:     // %
+    case TOKEN_TYPE::EQ:      // ==
+    case TOKEN_TYPE::NE:      // !=
+    case TOKEN_TYPE::LT:      // <
+    case TOKEN_TYPE::LE:      // <=
+    case TOKEN_TYPE::GT:      // >
+    case TOKEN_TYPE::GE:      // >=
+        return true;
 
+    default:
+        break;
+    }
+    return false;
+}
 bool misc::checkTokenInGroup(const int& type) {
     switch (type) {
     case TOKEN_TYPE::IDENT:
@@ -60,7 +79,9 @@ std::string misc::convertTokenType(const TOKEN_TYPE& t) {
     case TOKEN_TYPE::ASTERIX:
         return "*";
         break;
-
+    case TOKEN_TYPE::DIV:
+        return "/";
+        break;
     case TOKEN_TYPE::EQ:
         return "==";
         break;
@@ -162,8 +183,9 @@ std::string misc::VarTypeToStr(const TOKEN_TYPE& t) {
     return st;
 }
 
-// void misc::castType(llvm::Value* val, llvm::Type::TypeID t) {
-//     auto tp = val->getType();
-//     // if (tp->getTypeID() == t &&) {
-//     // }
-// }
+std::string misc::TokToString(const TOKEN& t) {
+    std::stringstream ss;
+    ss << "at line " << t.lineNo << " col no " << t.columnNo;
+
+    return ss.str();
+}

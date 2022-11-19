@@ -26,11 +26,14 @@ namespace misc {
     template <typename T>
     bool checkNullOpt(const std::optional<std::unique_ptr<T>>& t);
 
+    Value* check_truthy(Value* LHS);
+    bool checkValidExprType(llvm::Value* Val);
     bool checkTokInGroup(const TOKEN& tok, const std::vector<TOKEN_TYPE>& arr);
     bool checkIdent(const TOKEN& t);
     bool checkTokenInGroup(const int& type);
     bool checkTokenVarType(const int& type);
     bool checkTokenRetType(const int& type);
+    bool checkStrictEval(const TOKEN_TYPE& tok);
     std::string VarTypeToStr(const TOKEN_TYPE& t);
     static void restoreState(const TOKEN& prev);
     llvm::Value* CastToi32(llvm::Value* Val);
@@ -40,7 +43,7 @@ namespace misc {
                      std::function<void(llvm::Value*)> func_float,
                      std::function<void(llvm::Value*)> func_int);
     llvm::Type* convertToType(const TOKEN_TYPE& t);
-
+    std::string TokToString(const TOKEN& t);
     static llvm::AllocaInst* CreateEntryBlockAlloca(Function* TheFunction,
                                                     const std::string& VarName,
                                                     llvm::Type* Typ);
@@ -50,7 +53,8 @@ using Semi = char;
 using Err  = bool;
 
 namespace parse {
-    using StmtType = std::variant<std::unique_ptr<ASTnode>, Semi, Err>;
+    using StmtType = std::variant<std::unique_ptr<ASTnode>, Semi,
+                                  Err>; // TODO flip to optional
 
     static std::unique_ptr<ASTnode> ParseIntLit();
     static std::unique_ptr<ASTnode> ParseFloatLit();

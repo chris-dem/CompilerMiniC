@@ -20,13 +20,9 @@ extern "C" DLLEXPORT float print_float(float X) {
 }
 
 extern "C" {
-int While(int n);
+void pi();
 }
 
 int main() {
-    if (While(1) == 10) {
-        std::cout << "PASSED Result: " << While(1) << std::endl;
-    } else {
-        std::cout << "FAILED Result: " << While(1) << std::endl;
-    }
+    pi();
 }

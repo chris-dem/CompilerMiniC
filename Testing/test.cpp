@@ -1,8 +1,11 @@
+#include <algorithm>
 #include <deque>
 #include <iostream>
 #include <list>
 #include <memory>
+#include <numeric>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -27,14 +30,35 @@ class C : public A {
     }
 };
 
+int foo(int x) {
+    if (x)
+        return 3;
+    else
+        return 4;
+    return 5;
+    a = 4;
+}
+
+// std::optional<int> sum(std::optional<int> a, std::optional<int> b) {
+//     return a.value_or(b);
+// }
+
+// std::optional<int> map(std::optional<char> b) {
+//     if (!b)
+//         return b;
+//     return std::optional(static_cast<int>(b.value()));
+// }
+
 int main() {
-    std::unique_ptr<A> f = std::make_unique<C>();
-    if (!dynamic_cast<B*>(f.get())) {
-        std::cout << "At B" << std::endl;
-        f->foo(); // Can still use
+    int n;
+    // auto res       = std::transform_reduce(st.cbegin(), st.cend(), sum,
+    // map);
+    std::set<int> st = {1, 2, 3, 5};
+    st.insert(6);
+    if (st.find(6) != st.end()) {
+        std::cout << "Found" << std::endl;
     } else {
-        std::cout << "At C" << std::endl;
-        f->foo();
+        std::cout << "End" << std::endl;
     }
     return 0;
 }
