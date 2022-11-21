@@ -751,14 +751,12 @@ static UPtrASTnode parse::ParseProgram() {
             return nullptr;
         ExternLis.push_back(std::move(ExternNode));
     }
-
+    if (CurTok.type == TOKEN_TYPE::EOF_TOK) // Enforce at least 1 declaration
+        return LogError("Expected variable or function declaration");
     while (CurTok.type != TOKEN_TYPE::EOF_TOK) {
         auto DeclNode = parse::ParseDecl();
         if (!DeclNode)
             return nullptr;
-        // if (DeclarationASTnode* b =
-        //         dynamic_cast<DeclarationASTnode*>(DeclNode.get()))
-        //     b->setIsGlobal(true);
         StmtLis.push_back(std::move(DeclNode));
     }
     return std::make_unique<ProgramASTnode>(std::move(ExternLis),
@@ -768,16 +766,15 @@ static UPtrASTnode parse::ParseProgram() {
 static UPtrASTnode parse::ParseDecl() {
     auto Var_Type = CurTok;
     if (Var_Type.type == TOKEN_TYPE::VOID_TOK) {
-        // Run function call
         return ParseFunction();
     }
 
     if (!misc::checkTokenVarType(Var_Type.type))
-        return parse::LogError("No type found");
+        return parse::LogError("No variable type or function type found");
     getNextToken(); // Consume Type
     auto Ident = CurTok;
     if (CurTok.type != TOKEN_TYPE::IDENT)
-        return parse::LogError("No Identifier found");
+        return parse::LogError("No Identifier for variables or function found");
     getNextToken();                      // Consume name
     if (CurTok.type == TOKEN_TYPE::SC) { // Var decl
         // parse decl
@@ -1022,7 +1019,7 @@ static IRBuilder<> Builder(TheContext); // Helps to generate llvm instructures
 static std::unique_ptr<Module>
     TheModule; // contains functions and global variables, owns mem for all data
                // we generate
-static std::list<std::map<std::string, AllocaInst*>>
+static std::vector<std::map<std::string, AllocaInst*>>
     NamedValues; // Will keep track of wich values are defined in the current
                  // scope Helps to keep track their llvm representation
                  // IE  : SymbolTable
@@ -1073,7 +1070,7 @@ llvm::Value* misc::CastToi32(llvm::Value* val) {
 static AllocaInst* misc::findElemSC(const std::string& Name) {
     for (auto it = NamedValues.rbegin(); it != NamedValues.rend();
          it++) { // Start from the most local scope and go backwards
-        if ((*it).find(Name) != (*it).end()) {
+        if (it->find(Name) != it->end()) {
             return (*it)[Name];
         }
     }
@@ -1416,8 +1413,8 @@ std::optional<Value*> UnaryOperatorASTnode::codegen() {
 std::optional<Value*> DeclarationASTnode::codegen() {
     if (!IsGlobal) { // If value is not global
         if (NamedValues.back().find(Ident) !=
-            NamedValues.back().find(
-                Ident)) // Check if it was already declared in the local scope,
+            NamedValues.back()
+                .end()) // Check if it was already declared in the local scope,
                         // and specifically in the most recent one
             return LogErrorV("Redeclaration of variable " + Ident + " " +
                              misc::TokToString(Tok));
@@ -1430,7 +1427,8 @@ std::optional<Value*> DeclarationASTnode::codegen() {
                                      // defined as a global variable
             return LogErrorV("Redeclaration of variable " + Ident + " " +
                              misc::TokToString(Tok));
-        GlobalVariable* g;
+        GlobalVariable*
+            g; // LLVM throws an error If I dont initialise my globals
         if (Type == TOKEN_TYPE::FLOAT_TOK) {
             g = new GlobalVariable(
                 *(TheModule.get()), misc::convertToType(Type), false,
@@ -1545,10 +1543,11 @@ std::optional<Value*> FunctionCallASTnode::codegen() {
 /// generated, to check for any semnatic errors
 /// @return
 std::optional<Value*> BodyASTnode::codegen() {
-    // if (!IsMain) { // TODO If time do
-
-    NamedValues.push_back(std::map<std::string, AllocaInst*>());
-    // }
+    if (!IsMain) { // Scope of parameters is the same as the main scope. C does
+                   // not allow local vars to have the same name as the
+                   // parameters in order to not shadow them
+        NamedValues.push_back(std::map<std::string, AllocaInst*>());
+    }
     for (const auto& Local : LocalD) {
         auto V = Local->codegen();
         if (V.has_value() && !V.value()) {
@@ -1561,9 +1560,9 @@ std::optional<Value*> BodyASTnode::codegen() {
             return misc::NULLOPTPTR;
         }
     }
-    // if(!IsMain) {
-    NamedValues.pop_back();
-    // }
+    if (!IsMain) {
+        NamedValues.pop_back();
+    }
     return std::nullopt; // If all good return nulloptional to indicate
                          // everything is fine
 }
@@ -1591,12 +1590,16 @@ std::optional<Value*> IfStatementASTnode::codegen() {
     if (!comp) {
         return misc::NULLOPTPTR;
     }
-    if (Else.has_value()) {
+    if (Else.has_value()) { // If the statement is an if-else => Create Else
+                            // block and conditional jump between if and else
+                            // block
+                            // => Create true block => jump to end => generate
+                            // else block => jump to end
         BasicBlock* else_ = BasicBlock::Create(TheContext, "else");
         Builder.CreateCondBr(comp, true_, else_);
         Builder.SetInsertPoint(true_);
         auto BodRes = Body->codegen();
-        if (BodRes.has_value() && !BodRes.value()) {
+        if (BodRes.has_value() && !BodRes.value()) { // If there was an error
             return misc::NULLOPTPTR;
         }
         TheFunction->getBasicBlockList().push_back(else_);
@@ -1618,26 +1621,33 @@ std::optional<Value*> IfStatementASTnode::codegen() {
     Builder.SetInsertPoint(end_);
     return std::nullopt;
 }
-
+/// @brief While statement code generation
+/// While statement works in the same way as the diagram shown in the slides =>
+/// have a conditional block, body block and an after block. Before block does
+/// an unconditional jump to header block. Conditional blocks evaluates the
+/// conditional and does a conditional jump between body and after.  Body bock
+/// generates the code for the body of while and adds an unconditonal jump to
+/// the header
+/// @return
 std::optional<Value*> WhileStatementASTnode::codegen() {
     Function* TheFunction = Builder.GetInsertBlock()->getParent();
     BasicBlock* header_ = BasicBlock::Create(TheContext, "header", TheFunction);
     BasicBlock* while_  = BasicBlock::Create(TheContext, "body");
     BasicBlock* after_  = BasicBlock::Create(TheContext, "after");
     Builder.CreateBr(header_);
-    Builder.SetInsertPoint(header_);
+    Builder.SetInsertPoint(header_); // Generate header
     auto PredVal = Predicate->codegen().value();
     if (!PredVal)
         return misc::NULLOPTPTR;
-    if (PredVal->getType()->isFloatTy()) {
+    if (PredVal->getType()->isFloatTy()) { // Convert to truthy value
         PredVal = Builder.CreateFPToSI(PredVal, Type::getInt32Ty(TheContext));
     }
-    Value* comp = Builder.CreateICmpNE(
+    Value* comp = Builder.CreateICmpNE( // Convert to i1
         PredVal, ConstantInt::get(TheContext, APInt(32, 0, true)),
         "while_comp");
     Builder.CreateCondBr(comp, while_, after_);
     TheFunction->getBasicBlockList().push_back(while_);
-    Builder.SetInsertPoint(while_);
+    Builder.SetInsertPoint(while_); // Generate main block
 
     std::optional<Value*> ResBody = Body->codegen();
     if (ResBody.has_value() && !ResBody.value())
@@ -1648,13 +1658,18 @@ std::optional<Value*> WhileStatementASTnode::codegen() {
     return std::nullopt;
 }
 
+/// @brief Extern function codegeneration code
+/// Same method as generating the code for the prototype of functions
+/// @return
 std::optional<Value*> ExternFunctionDeclASTnode::codegen() {
     //------------GENERATE PROTOTOTYPE------------
     std::vector<Type*> ArgsT;
-    if (std::holds_alternative<VectorDeclAST>(Args)) {
+    if (std::holds_alternative<VectorDeclAST>(
+            Args)) { // Check if the args are non void
         const auto& vArg = std::get<VectorDeclAST>(Args);
         std::vector<Type*> tmp;
-        for (const auto& Arg : vArg) {
+        for (const auto& Arg :
+             vArg) { // Push type* for each token type of argument
             if (Arg->getType() == TOKEN_TYPE::FLOAT_TOK) {
                 tmp.push_back(Type::getFloatTy(TheContext));
             } else {
@@ -1663,7 +1678,7 @@ std::optional<Value*> ExternFunctionDeclASTnode::codegen() {
         }
         ArgsT = tmp;
     }
-    Type* VRetType;
+    Type* VRetType; // Find return type of function
     switch (RetType) {
     case TOKEN_TYPE::INT_TOK:
     case TOKEN_TYPE::BOOL_TOK:
@@ -1675,16 +1690,32 @@ std::optional<Value*> ExternFunctionDeclASTnode::codegen() {
     default:
         VRetType = Type::getVoidTy(TheContext);
     }
-    FunctionType* MyFT = FunctionType::get(VRetType, ArgsT, false);
+    FunctionType* MyFT =
+        FunctionType::get(VRetType, ArgsT, false); // Generate return type
     if (!MyFT)
         return LogErrorV("Error creating function type");
-    Function* F = Function::Create(MyFT, Function::ExternalLinkage, Ident,
+    Function* F = Function::Create(MyFT, Function::ExternalLinkage,
+                                   Ident, // Generate function
                                    TheModule.get());
     if (!F)
         return LogErrorV("Error creating function");
     return std::nullopt;
 }
-
+/// @brief Function Node code generation
+/// Generate the prototype
+/// Create the basic block, create the allocainstance that will hold the return
+/// value of the function. Push back the initial scope of the function. Add to
+/// that scope the allocainstances of the parameters and the names. Create the
+/// return block for the current function and do not assign it to the function
+/// yet. Generate the code generation for the main block of the function. After
+/// if the main block is valid, append return block to basic block list of
+/// function, create uncond jump to return block and create ret with the value
+/// stored in allocainst, if the function is void => allocainst nullopt =>
+/// return void. In c it is valid for a function with a return type other than
+/// void to also not contain a return statement and still return something. The
+/// method that i used is the same one used with the actual clang ir. At the end
+/// clear, scope and nullify global variables for the return operations
+/// @return
 std::optional<Value*> FunctionASTnode::codegen() {
     //------------GENERATE PROTOTOTYPE------------
     std::vector<Type*> ArgsT;
@@ -1713,18 +1744,19 @@ std::optional<Value*> FunctionASTnode::codegen() {
         VRetType = Type::getVoidTy(TheContext);
     }
     FunctionType* MyFT = FunctionType::get(VRetType, ArgsT, false);
-    // DefinedFunctions.insert(Ident); // Add function add defined function
     Function* F = Function::Create(MyFT, Function::ExternalLinkage, Ident,
                                    TheModule.get());
 
-    BasicBlock* BB = BasicBlock::Create(TheContext, "entry", F);
-    if (Ret != TOKEN_TYPE::VOID_TOK)
+    BasicBlock* BB = BasicBlock::Create(TheContext, "entry",
+                                        F); // Same thing as extern declaration
+    if (Ret !=
+        TOKEN_TYPE::VOID_TOK) // If ret type is not void create allocainst
         RetValue = std::optional(misc::CreateEntryBlockAlloca(
             F, "ret_val", misc::convertToType(Ret)));
-    Builder.SetInsertPoint(BB);
+    Builder.SetInsertPoint(BB); // set insert point to main block
 
     //--------------END OF PROTOTYPE--------------
-    std::map<std::string, AllocaInst*> my_map; // Add values
+    std::map<std::string, AllocaInst*> my_map; // Create local scope declaration
     size_t idx = 0;
     for (auto& Arg : F->args()) {
         const VectorDeclAST& f = std::get<VectorDeclAST>(Args);
@@ -1738,43 +1770,47 @@ std::optional<Value*> FunctionASTnode::codegen() {
         my_map[f[idx]->getIdent()] = Alloca;
         Arg.setName(f[idx++]->getIdent());
     }
-    NamedValues.push_back(std::move(my_map));
-    retBlock = BasicBlock::Create(TheContext, "ret");
+
+    NamedValues.push_back(std::move(my_map)); // Push back local scope
+    retBlock = BasicBlock::Create(
+        TheContext,
+        "ret"); // Return block to conditionally jump all statements in
     // Basic block code-gen
     // Set BasicBlock to true
     auto ret = Body->codegen();
-    if (!ret.has_value() || ret.value()) {
-        NamedValues.pop_back();
-        // if (RetValue.has_value()) {
-        //     Value* ValToRet =
-        //         Builder.CreateLoad(misc::convertToType(Ret),
-        //         RetValue.value());
-        //     Builder.CreateRet(ValToRet);
-        // } else {                     // if nulloptional
-        //     Builder.CreateRetVoid(); // CREATE RIP
-        // }
-        Builder.CreateBr(retBlock);
-        F->getBasicBlockList().push_back(retBlock);
+    if (!ret.has_value() || ret.value()) { // If body valid
+        NamedValues.pop_back();            // Pop initial scope
+        Builder.CreateBr(
+            retBlock); // Create a jump from current point to return block
+        F->getBasicBlockList().push_back(
+            retBlock); // add return block to function block list
         Builder.SetInsertPoint(retBlock);
-        if (RetValue.has_value()) {
+        if (RetValue
+                .has_value()) { // if there is a value, load it and return it
             Value* ValToRet =
                 Builder.CreateLoad(misc::convertToType(Ret), RetValue.value());
             Builder.CreateRet(ValToRet);
         } else {                     // if nulloptional
-            Builder.CreateRetVoid(); // CREATE RIP
+            Builder.CreateRetVoid(); // CREATE ret void
         }
-        if (verifyFunction(*F, &outs())) {
+        if (verifyFunction(*F, &outs())) { // verify function
             std::cout << "Error validation" << std::endl;
             return misc::NULLOPTPTR;
         }
+
         // Nullify output
-        RetValue.reset();
+        NamedValues.clear(); // Clear all local scopes
+        RetValue.reset();    // Reset allocainst value
+        retBlock = nullptr;  // nullify basic block
         return std::nullopt;
     }
-    F->eraseFromParent();
+    F->eraseFromParent(); // if we got an error, pop the block and return error
     return misc::NULLOPTPTR;
 }
-
+/// @brief Program ast node code generation
+/// Generate all extern function recursively
+/// Generate all definitions recursively
+/// @return
 std::optional<Value*> ProgramASTnode::codegen() {
     for (const auto& Ex : ExternL) {
         auto Res = Ex->codegen();
@@ -1791,29 +1827,51 @@ std::optional<Value*> ProgramASTnode::codegen() {
     return std::nullopt;
 }
 
+/// @brief return statement code generation
+/// Code generation for return statement works as follows:
+/// Create an always true conditional jump to return block and to a dead code
+/// block. Conditional jump to link the two block. The idea is to always jump to
+/// the return block. At the same time, I still want to generate the rest of the
+/// code, either for scemantic code check, or to avoid any complicated code
+/// execution path testing. This method seems to simplify a lot of the issues
+/// faced. Can be improved with second passes to remove dead blocks. In
+/// addition, I check if return statement type and the ret type of the function
+/// match and if not , throw error.
+/// @return
 std::optional<Value*> ReturnStatementASTnode::codegen() {
     if (RetValue.has_value()) {   // Return with expression
         if (!RetExpr.has_value()) // Return type has void
             return LogErrorV(
-                "Function of type non-void does not return anything");
+                "Function of type non-void does not return anything " +
+                misc::TokToString(Tok));
         auto retval = RetExpr.value()
                           ->codegen()
                           .value(); // Will always return with expression
-        if (!retval)
+        if (!retval)                // If expression had an error
             return misc::NULLOPTPTR;
         if (RetValue.value()->getAllocatedType()->getTypeID() !=
-            retval->getType()->getTypeID())
-            return LogErrorV("Incompatible return types");
-        Builder.CreateStore(retval, RetValue.value());
+            retval->getType()->getTypeID()) // if types do not match
+            return LogErrorV("Incompatible return types" +
+                             misc::TokToString(Tok));
+        Builder.CreateStore(
+            retval,
+            RetValue.value());   // If evertyhing is fine, load the value of the
+                                 // expression to the return allocainst node
     } else {                     // If ret type is void
         if (RetExpr.has_value()) // and the returns tatement returns
                                  // with expression
             return LogErrorV("Functon of type void returns expression");
     }
-    auto AlwaysT     = Builder.getInt1(true);
+    auto AlwaysT = Builder.getInt1(true); // Create always true conditional jump
     BasicBlock* Dead = BasicBlock::Create(
-        TheContext, "deadcode", Builder.GetInsertBlock()->getParent());
-    Builder.CreateCondBr(AlwaysT, retBlock, Dead);
+        TheContext, "deadcode",
+        Builder.GetInsertBlock()
+            ->getParent()); // Deadcode block , everything after return
+    Builder.CreateCondBr(
+        AlwaysT, retBlock,
+        Dead); // Conditional jump to ret block and to deadcode, (will always go
+               // to retblock). Use deadblock to write deadcode to verify
+               // semantics
     Builder.SetInsertPoint(Dead);
     return std::nullopt;
 }
@@ -1887,7 +1945,7 @@ int main(int argc, char** argv) {
     if (Res.has_value() && !Res.value()) {
         errs() << "Error";
     } else {
-        std::cout << "Made it out" << std::endl;
+        std::cout << "Semantic passed" << std::endl;
     } //
     TheModule->print(dest, nullptr);
     //********************* End printing final IR

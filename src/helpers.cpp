@@ -4,26 +4,6 @@
 #include <iostream>
 #include <sstream>
 
-std::string misc::convertNo(const TOKEN& tok) {
-    std::stringstream ss;
-    ss << '(' << tok.columnNo << ',' << tok.columnNo << ')';
-    return ss.str();
-}
-
-template <typename T> bool misc::checkNullOpt(const std::optional<T*>& t) {
-    return t.has_value() && !t.value();
-}
-
-template <typename T>
-bool misc::checkNullOpt(const std::optional<std::unique_ptr<T>>& t) {
-    return t.has_value() && !t.value();
-}
-
-std::string misc::convertNo(const int& line, const int& col) {
-    std::stringstream ss;
-    ss << '(' << line << ',' << col << ')';
-    return ss.str();
-}
 bool misc::checkStrictEval(const TOKEN_TYPE& type) {
     switch (type) {
     case TOKEN_TYPE::PLUS:    // +
@@ -150,16 +130,6 @@ bool misc::checkTokenRetType(const int& type) {
         return true;
     }
     return false;
-}
-
-void misc::calcBuilder(llvm::Value* val,
-                       std::function<void(llvm::Value*)> func_float,
-                       std::function<void(llvm::Value*)> func_int) {
-    if (val->getType()->isFloatTy()) {
-        func_float(val);
-    } else {
-        func_int(val);
-    }
 }
 
 std::string misc::VarTypeToStr(const TOKEN_TYPE& t) {

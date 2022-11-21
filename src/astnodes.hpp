@@ -114,6 +114,7 @@ class FloatASTnode : public ASTnode {
     virtual std::string to_string(const size_t tab) const override;
 };
 
+// Type level programming, use char to denote Void types
 using Void        = char;
 using UPtrASTnode = std::unique_ptr<ASTnode>;
 using OptionalPtr = std::optional<UPtrASTnode>;
@@ -168,8 +169,9 @@ class BinaryOperatorASTnode : public ASTnode {
     BinaryOperatorASTnode(TOKEN tok, TOKEN_TYPE op, UPtrASTnode LHS,
                           UPtrASTnode RHS);
 
-    virtual std::optional<Value*> codegen() override;
     // return a sting representation of this AST node
+    virtual std::optional<Value*> codegen() override;
+    // lazy evaluations
     Value* lazy_or(Value* LHS_Value);
     Value* lazy_and(Value* LHS_Value);
     virtual std::string to_string(const size_t tab) const override;
@@ -254,7 +256,8 @@ class DeclarationASTnode : public ASTnode {
 };
 
 using VectorDeclAST = std::vector<std::unique_ptr<DeclarationASTnode>>;
-using Args_t        = std::variant<VectorDeclAST, Void>;
+// Used as haskells Either type, Either VectorDeclAST Void
+using Args_t = std::variant<VectorDeclAST, Void>;
 
 /// @brief  BodyASTnode -  Class for body statements
 class BodyASTnode : public ASTnode {
@@ -287,7 +290,7 @@ class ProgramASTnode : public ASTnode {
     virtual std::string to_string(const size_t tab) const override;
 };
 
-/// @brief FunctionDeclASTnode - Class for the extern decleration
+/// @brief ExternFunctionASTnode - Class for the extern decleration
 class ExternFunctionDeclASTnode : public ASTnode {
     std::string Ident;
     TOKEN_TYPE RetType;

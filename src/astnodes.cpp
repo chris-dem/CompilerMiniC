@@ -87,7 +87,7 @@ std::string FunctionCallASTnode::to_string(const size_t tab) const {
 //===----------------------------------------------------------------------===////===----------------------------------------------------------------------===//
 
 //===----------------------------------------------------------------------===//
-// IdentifierASTnode
+// BinaryOperatorASTnode
 BinaryOperatorASTnode::BinaryOperatorASTnode(TOKEN tok, TOKEN_TYPE op,
                                              UPtrASTnode LHS, UPtrASTnode RHS)
     : Tok(tok), Op(op), LHS(std::move(LHS)), RHS(std::move(RHS)) {}
@@ -107,7 +107,7 @@ std::string BinaryOperatorASTnode::to_string(const size_t tab) const {
 //===----------------------------------------------------------------------===//
 
 //===----------------------------------------------------------------------===//
-// IdentifierASTnode
+// UnaryOperatorASTnode
 UnaryOperatorASTnode::UnaryOperatorASTnode(TOKEN tok, TOKEN_TYPE op,
                                            UPtrASTnode expr)
     : Tok(tok), Op(op), Expr(std::move(expr)) {}
@@ -125,7 +125,7 @@ std::string UnaryOperatorASTnode::to_string(const size_t tab) const {
 //===----------------------------------------------------------------------===//
 
 //===----------------------------------------------------------------------===//
-// IdentifierASTnode
+// AssignmentASTnode
 AssignmentASTnode::AssignmentASTnode(TOKEN tok, std::string Name,
                                      UPtrASTnode rvalue)
     : Tok(tok), Name(std::move(Name)), Rvalue(std::move(rvalue)) {}
@@ -187,7 +187,7 @@ std::string WhileStatementASTnode::to_string(const size_t tab) const {
 //===----------------------------------------------------------------------===//
 
 //===----------------------------------------------------------------------===//
-// IdentifierASTnode
+// DeclarationASTnode
 DeclarationASTnode::DeclarationASTnode(TOKEN tok, std::string ident,
                                        TOKEN_TYPE type)
     : Tok(tok), Ident(std::move(ident)), Type(type) {
@@ -219,7 +219,7 @@ std::string DeclarationASTnode::to_string(const size_t tab) const {
 //===----------------------------------------------------------------------===//
 
 //===----------------------------------------------------------------------===//
-// IdentifierASTnode
+// BodyASTnode
 BodyASTnode::BodyASTnode(VectorAST localD, VectorAST stmtL)
     : LocalD(std::move(localD)), StmtL(std::move(stmtL)) {}
 void BodyASTnode::setIsMain(bool Val) {
@@ -247,7 +247,7 @@ std::string BodyASTnode::to_string(const size_t tab) const {
 //===----------------------------------------------------------------------===//
 
 //===----------------------------------------------------------------------===//
-// IdentifierASTnode
+// ProgramASTnode
 ProgramASTnode::ProgramASTnode(VectorAST externL, VectorAST declL)
     : ExternL(std::move(externL)), DeclL(std::move(declL)) {}
 
@@ -268,7 +268,7 @@ std::string ProgramASTnode::to_string(const size_t tab) const {
 //===----------------------------------------------------------------------===//
 
 //===----------------------------------------------------------------------===//
-// IdentifierASTnode
+// ExternFunctionDeclASTnode
 ExternFunctionDeclASTnode::ExternFunctionDeclASTnode(std::string ident,
                                                      TOKEN_TYPE type,
                                                      Args_t args)
@@ -294,7 +294,7 @@ std::string ExternFunctionDeclASTnode::to_string(const size_t tab) const {
 //===----------------------------------------------------------------------===//
 
 //===----------------------------------------------------------------------===//
-// IdentifierASTnode
+// FunctionASTnode
 FunctionASTnode::FunctionASTnode(Args_t args, UPtrASTnode body,
                                  std::string ident, TOKEN_TYPE ret)
     : Args(std::move(args)), Body(std::move(body)), Ident(std::move(ident)),
@@ -323,7 +323,7 @@ std::string FunctionASTnode::to_string(const size_t tab) const {
 //===----------------------------------------------------------------------===//
 
 //===----------------------------------------------------------------------===//
-// IdentifierASTnode
+// ReturnStatementASTnode
 ReturnStatementASTnode::ReturnStatementASTnode(TOKEN tok, OptionalPtr ret_expr)
     : Tok(tok), RetExpr(std::move(ret_expr)){};
 
