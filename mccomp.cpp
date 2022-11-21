@@ -339,8 +339,6 @@ static void putBackToken(TOKEN tok) {
 // Recursive Descent Parser - Function call for each production
 //===----------------------------------------------------------------------===//
 
-/* Add function calls for each production */
-
 static void misc::restoreState(const TOKEN& prev) {
     putBackToken(CurTok);
     putBackToken(prev);
@@ -422,7 +420,9 @@ static std::optional<VectorAST> parse::ParseArgs() {
                 return std::nullopt; // Error in Expr
             args.push_back(std::move(Ret));
         }
-        while (CurTok.type != TOKEN_TYPE::RPAR) {
+        while (CurTok.type !=
+               TOKEN_TYPE::RPAR) { // Had permission from the module organiser
+                                   // to go for an iterative approach
             if (CurTok.type != TOKEN_TYPE::COMMA)
                 return LogErrorOpt<VectorAST>("No comma found");
             getNextToken(); // Parse ,
@@ -460,7 +460,8 @@ static UPtrASTnode parse::ParseFunctionCall() {
 // expr ::= IDENT = expr
 //         | rval
 static UPtrASTnode parse::ParseExpr() {
-    if (CurTok.type == TOKEN_TYPE::IDENT) {
+    if (CurTok.type ==
+        TOKEN_TYPE::IDENT) { // Use LL(2) to assume either rval or IDENT =
         auto PrevTok = CurTok;
         getNextToken();
         if (CurTok.type == TOKEN_TYPE::ASSIGN) { // Assign
@@ -471,7 +472,7 @@ static UPtrASTnode parse::ParseExpr() {
             auto Ret = std::make_unique<AssignmentASTnode>(
                 PrevTok, std::move(PrevTok.lexeme), std::move(Expr));
             return std::move(Ret);
-        } // if not it means not rval
+        } // if not it means  rval
         misc::restoreState(PrevTok);
     }
     // getNextToken();
@@ -485,7 +486,9 @@ static UPtrASTnode parse::ParseRVal() {
     UPtrASTnode curr = parse::ParseRAnd();
     if (!curr)
         return nullptr;
-    while (CurTok.type == TOKEN_TYPE::OR) {
+    while (CurTok.type ==
+           TOKEN_TYPE::OR) { // Had permission from the module organiser
+                             // to go for an iterative approach
         auto cTok = CurTok;
         getNextToken(); // Consume ||
         auto RHS = parse::ParseRAnd();
@@ -503,7 +506,9 @@ static UPtrASTnode parse::ParseRAnd() {
     auto curr = parse::ParseREq();
     if (!curr)
         return nullptr;
-    while (CurTok.type == TOKEN_TYPE::AND) {
+    while (CurTok.type ==
+           TOKEN_TYPE::AND) { // Had permission from the module organiser
+                              // to go for an iterative approach
         auto cTok = CurTok;
         getNextToken(); // consume &&
         auto RHS = parse::ParseREq();
@@ -521,7 +526,10 @@ static UPtrASTnode parse::ParseREq() {
     auto curr = parse::ParseRIneq();
     if (!curr)
         return nullptr;
-    while (CurTok.type == TOKEN_TYPE::NE || CurTok.type == TOKEN_TYPE::EQ) {
+    while (CurTok.type == TOKEN_TYPE::NE ||
+           CurTok.type ==
+               TOKEN_TYPE::EQ) { // Had permission from the module organiser
+                                 // to go for an iterative approach
         auto PrevToken = CurTok;
         getNextToken(); // Consume Symb
         auto RHS = parse::ParseRIneq();
@@ -567,7 +575,9 @@ static UPtrASTnode parse::ParseRPm() {
     if (!curr)
         return nullptr;
     while (CurTok.type == TOKEN_TYPE::PLUS ||
-           CurTok.type == TOKEN_TYPE::MINUS) {
+           CurTok.type ==
+               TOKEN_TYPE::MINUS) { // Had permission from the module organiser
+                                    // to go for an iterative approach
         auto PrevToken = CurTok;
         getNextToken(); // Absorb + or -
         auto RHS = parse::ParseRMdm();
@@ -588,7 +598,9 @@ static UPtrASTnode parse::ParseRMdm() {
         return nullptr;
     while (CurTok.type == TOKEN_TYPE::DIV ||
            CurTok.type == TOKEN_TYPE::ASTERIX ||
-           CurTok.type == TOKEN_TYPE::MOD) {
+           CurTok.type ==
+               TOKEN_TYPE::MOD) { // Had permission from the module organiser
+                                  // to go for an iterative approach
         auto PrevToken = CurTok;
         getNextToken(); // Absorb symbol
         auto RHS = parse::ParseRp();
@@ -666,9 +678,14 @@ static UPtrASTnode parse::ParseRp() {
     return std::move(Ret);
 }
 
+/// Parse stmt
+/// Use variant to indicate whether statemnt is semicolon, an error or a
+/// statement
+/// stmt ::= expr_stmt | if_stmt |while_stmt | return_stmt | block
+/// @return
 static parse::StmtType parse::ParseStmt() {
-    if (CurTok.type == TOKEN_TYPE::SC) {
-        getNextToken(); // Absorb SC
+    if (CurTok.type == TOKEN_TYPE::SC) { // If semicolon , parse as semicolon
+        getNextToken();                  // Absorb SC
         return parse::StmtType('c');
     }
     if (misc::checkTokenInGroup(CurTok.type)) { // Check for expr_stmt
@@ -707,9 +724,14 @@ static parse::StmtType parse::ParseStmt() {
     return parse::StmtType(false);
 }
 
+/// stmt_list ::= stmt stmt_list | epsilon
+/// @return
 static std::optional<VectorAST> parse::ParseStmtList() {
     auto StList = VectorAST();
-    while (CurTok.type != TOKEN_TYPE::RBRA) {
+    // Use follow list of stmt_list to determine when it is finished
+    while (CurTok.type !=
+           TOKEN_TYPE::RBRA) { // Had permission from the module organiser
+                               // to go for an iterative approach
         auto Stmt = parse::ParseStmt();
         if (std::holds_alternative<Semi>(Stmt)) // Indicates ;
             continue;
@@ -721,6 +743,8 @@ static std::optional<VectorAST> parse::ParseStmtList() {
     return std::make_optional<VectorAST>(std::move(StList));
 }
 
+// parse Identifier in local declarations
+// local_decl ::= var_type IDENT ;
 static UPtrASTnode parse::ParseTypeIdentSC() {
     auto Ret = parse::ParseTypeIdent();
     if (!Ret)
@@ -731,8 +755,11 @@ static UPtrASTnode parse::ParseTypeIdentSC() {
     return std::move(Ret);
 }
 
+// parse local declarations
+// local_delcs ::= local_delc local_delcs
 static std::optional<VectorAST> parse::ParseLocalDelcs() {
     auto LocalDecls = VectorAST();
+    // Use first set to determine when still in  local decls
     while (misc::checkTokenVarType(CurTok.type)) {
         auto Decl = parse::ParseTypeIdentSC();
         if (!Decl)
@@ -742,10 +769,17 @@ static std::optional<VectorAST> parse::ParseLocalDelcs() {
     return std::make_optional<VectorAST>(std::move(LocalDecls));
 }
 
+// parse program, program treats extern list as possible nullable, makes code a
+// lot cleaner
+// program ::= extern_list delc_list
+//              |delc_list
 static UPtrASTnode parse::ParseProgram() {
-    auto ExternLis = VectorAST();
-    auto StmtLis   = VectorAST();
-    while (CurTok.type == TOKEN_TYPE::EXTERN) {
+    auto ExternLis = VectorAST(); // extern list
+    auto StmtLis   = VectorAST(); // statement list
+    // use first set of externlist to determine if still in extern list
+    while (CurTok.type ==
+           TOKEN_TYPE::EXTERN) { // Had permission from the module organiser
+                                 // to go for an iterative approach
         auto ExternNode = parse::ParseExtern();
         if (!ExternNode)
             return nullptr;
@@ -753,7 +787,10 @@ static UPtrASTnode parse::ParseProgram() {
     }
     if (CurTok.type == TOKEN_TYPE::EOF_TOK) // Enforce at least 1 declaration
         return LogError("Expected variable or function declaration");
-    while (CurTok.type != TOKEN_TYPE::EOF_TOK) {
+    // Use follow set of stmt list to check for statements
+    while (CurTok.type !=
+           TOKEN_TYPE::EOF_TOK) { // Had permission from the module organiser
+                                  // to go for an iterative approach
         auto DeclNode = parse::ParseDecl();
         if (!DeclNode)
             return nullptr;
@@ -763,26 +800,29 @@ static UPtrASTnode parse::ParseProgram() {
                                             std::move(StmtLis));
 }
 
+// Parse declarations, both variable and function
+// decl ::= var_decl | fun_delc
 static UPtrASTnode parse::ParseDecl() {
     auto Var_Type = CurTok;
-    if (Var_Type.type == TOKEN_TYPE::VOID_TOK) {
+    if (Var_Type.type == TOKEN_TYPE::VOID_TOK) { // if void, from first set we
+                                                 // know function declaration
         return ParseFunction();
     }
-
     if (!misc::checkTokenVarType(Var_Type.type))
         return parse::LogError("No variable type or function type found");
     getNextToken(); // Consume Type
     auto Ident = CurTok;
     if (CurTok.type != TOKEN_TYPE::IDENT)
         return parse::LogError("No Identifier for variables or function found");
-    getNextToken();                      // Consume name
+    getNextToken(); // Consume name, use ll2 to determine if var declartion or
+                    // function
     if (CurTok.type == TOKEN_TYPE::SC) { // Var decl
         // parse decl
         getNextToken(); // Consume SC
         auto Res = std::make_unique<DeclarationASTnode>(
             Ident, std::move(Ident.lexeme),
             static_cast<TOKEN_TYPE>(Var_Type.type));
-        Res->setIsGlobal(true);
+        Res->setIsGlobal(true); // Set declaration node global flag to true
         return Res;
     } else if (CurTok.type == TOKEN_TYPE::LPAR) { // Fun decl
         auto Params = parse::ParseParams();       // () Consumed in parseblock
@@ -790,7 +830,6 @@ static UPtrASTnode parse::ParseDecl() {
             return nullptr;
         auto block = parse::ParseBlock(); // {} Consumed in parseblock
         if (!block) {
-            std::cout << "Here" << std::endl;
             return nullptr;
         }
         return std::make_unique<FunctionASTnode>(
@@ -800,6 +839,8 @@ static UPtrASTnode parse::ParseDecl() {
     return parse::LogError("Invalid declaration");
 }
 
+// var_delc ::= var_type IDENT Sc
+// SC is handaled outisde
 static std::unique_ptr<DeclarationASTnode> parse::ParseTypeIdent() {
     auto Var_Type = CurTok;
     if (!misc::checkTokenVarType(Var_Type.type))
@@ -814,23 +855,29 @@ static std::unique_ptr<DeclarationASTnode> parse::ParseTypeIdent() {
         static_cast<TOKEN_TYPE>(Var_Type.type));
 }
 
+// Parse params,usage of args_t to determine whether void params or list of
+// params, null opt to denote error
+// params ::= param_list |  void | epsilon
 static std::optional<Args_t> parse::ParseParams() {
     if (CurTok.type != TOKEN_TYPE::LPAR)
         return parse::LogErrorOpt<Args_t>("No LPAR found");
     getNextToken(); // Consume LPar
     Args_t Decl;
     if (CurTok.type == TOKEN_TYPE::VOID_TOK) {
-        Decl = 'c';
+        Decl = 'c';     // From type level programming, void
         getNextToken(); // Consume void
     } else {
         auto Arg_list = VectorDeclAST(); // List of arguments
+        // use follow set to determine param list
         if (CurTok.type != TOKEN_TYPE::RPAR) {
             auto Decl = parse::ParseTypeIdent();
             if (!Decl)
                 return std::nullopt;
             Arg_list.push_back(std::move(Decl));
         }
-        while (CurTok.type != TOKEN_TYPE::RPAR) {
+        while (CurTok.type !=
+               TOKEN_TYPE::RPAR) { // Had permission from the module organiser
+                                   // to go for an iterative approach
             if (CurTok.type != TOKEN_TYPE::COMMA) {
                 return parse::LogErrorOpt<Args_t>("No comma found");
             }
@@ -845,7 +892,7 @@ static std::optional<Args_t> parse::ParseParams() {
     getNextToken(); // Consume Rpar
     return std::optional(std::move(Decl));
 }
-
+// extern ::= "extern" type_spec Ident (params) ;
 static UPtrASTnode parse::ParseExtern() {
     getNextToken(); // Consume extern
     auto Type = CurTok;
@@ -867,21 +914,22 @@ static UPtrASTnode parse::ParseExtern() {
         std::move(Decl.value()));
 }
 
-// Do until local_delcs
+// Block parsing
+// block ::= { local_delcs stmt_list }
 static std::unique_ptr<BodyASTnode> parse::ParseBlock() {
     if (CurTok.type != TOKEN_TYPE::LBRA) {
         parse::LogError("No left bracket found");
         return nullptr;
     }
-    getNextToken(); // Consume LBRA
-    auto LocalRes = parse::ParseLocalDelcs();
-    if (!LocalRes.has_value()) // Error happened
+    getNextToken();                           // Consume LBRA
+    auto LocalRes = parse::ParseLocalDelcs(); // Parse local declarations
+    if (!LocalRes.has_value())                // Error happened
         return nullptr;
     auto LocalD  = std::move(LocalRes.value());
     auto StmtRes = parse::ParseStmtList();
     if (!StmtRes.has_value())
         return nullptr;
-    if (CurTok.type != TOKEN_TYPE::RBRA) {
+    if (CurTok.type != TOKEN_TYPE::RBRA) { // expect right bracket
         parse::LogError("No right bracket found");
         return nullptr;
     }
@@ -890,6 +938,8 @@ static std::unique_ptr<BodyASTnode> parse::ParseBlock() {
     return std::make_unique<BodyASTnode>(std::move(LocalD), std::move(StmtL));
 }
 
+// parse function
+// fun_delc ::= type_spec IDENT(params) block
 static UPtrASTnode parse::ParseFunction() {
     auto RetType = CurTok;
     if (!misc::checkTokenRetType(RetType.type))
@@ -905,12 +955,13 @@ static UPtrASTnode parse::ParseFunction() {
     auto block = parse::ParseBlock(); // {} Consumed RBra
     if (!block)
         return nullptr;
-    block->setIsMain(true);
+    block->setIsMain(true); // used later in code generation
     return std::make_unique<FunctionASTnode>(
         std::move(Params.value()), std::move(block), std::move(Ident.lexeme),
         static_cast<TOKEN_TYPE>(RetType.type));
 }
-
+// parse if statements, use std::optional to denote optional else statement
+// if_stmt ::= if ( expr ) block else_stmt
 static UPtrASTnode parse::ParseIf() {
     if (CurTok.type != TOKEN_TYPE::IF)
         return parse::LogError("Expected If token");
@@ -938,15 +989,18 @@ static UPtrASTnode parse::ParseIf() {
     return std::make_unique<IfStatementASTnode>(
         IfTok, std::move(Expr), std::move(Block), std::move(Else));
 }
-
+// parse else statement
+// else_stmt ::= else block / epsilon
 static OptionalPtr parse::ParseElse() {
+    // Use first set to determine if there is else block
     if (CurTok.type == TOKEN_TYPE::ELSE) {
         getNextToken(); // Consume else
         return std::optional(parse::ParseBlock());
     }
-    return std::nullopt;
+    return std::nullopt; // epsilon
 }
-//
+// parse while statement
+// while_stmt = while (expr) stmt
 static UPtrASTnode parse::ParseWhile() {
     if (CurTok.type != TOKEN_TYPE::WHILE)
         return parse::LogError("Expected while token");
@@ -1010,8 +1064,8 @@ static UPtrASTnode parser() {
 
 /// SINCE CODEGEN RETURNS std::optional<Value*>
 /// ERROR IS DENOTED AS std::optional(nullptr)
-/// Error could have also been nullopt but I preferred to use it as as a
-/// function without the need to return
+/// Error could have also been nullopt but I preferred to use it as code
+/// generation without return value
 
 static LLVMContext
     TheContext; // Opaque object that owns a lot of core llvm data structures
@@ -1029,7 +1083,8 @@ static std::map<std::string,
     GlobalVariables; // Will keep of global variables
 
 /// @brief Value to hold of the return value of a function. Usage of optional
-/// for lazy instatiation, and for voids
+/// for lazy instatiation, and for void function. Ret block is used as the ret
+/// instruction for the function
 static std::optional<AllocaInst*> RetValue = std::nullopt;
 static BasicBlock* retBlock                = nullptr;
 
@@ -1041,15 +1096,8 @@ std::optional<Value*> LogErrorV(std::string str) {
     fprintf(stderr, "Error: %s\n", str.c_str());
     return misc::NULLOPTPTR;
 }
-bool misc::checkValidExprType(llvm::Value* Val) {
-    if (!Val)
-        return false;
-    if (Val->getType()->isVoidTy()) {
-        return false;
-    }
-    return true;
-}
 
+// used to convert between token types and llvm types
 llvm::Type* misc::convertToType(const TOKEN_TYPE& t) {
     switch (t) {
     case TOKEN_TYPE::BOOL_TOK:
@@ -1063,10 +1111,12 @@ llvm::Type* misc::convertToType(const TOKEN_TYPE& t) {
     return nullptr;
 }
 
+// Used to cast i1 to i32
 llvm::Value* misc::CastToi32(llvm::Value* val) {
     return Builder.CreateIntCast(val, Type::getInt32Ty(TheContext), false);
 }
-
+// Find element in local scope. Use reverse iterator to search the value from
+// the deepest scope to the least deepest
 static AllocaInst* misc::findElemSC(const std::string& Name) {
     for (auto it = NamedValues.rbegin(); it != NamedValues.rend();
          it++) { // Start from the most local scope and go backwards
@@ -1076,11 +1126,14 @@ static AllocaInst* misc::findElemSC(const std::string& Name) {
     }
     return nullptr;
 }
+// FInd element in the global variables
 static GlobalVariable* misc::findElemGl(const std::string& Name) {
     if (GlobalVariables.find(Name) != GlobalVariables.end())
         return GlobalVariables[Name];
     return nullptr;
 }
+
+// create alloca instance
 static AllocaInst* misc::CreateEntryBlockAlloca(Function* TheFunction,
                                                 const std::string& VarName,
                                                 Type* typ) {
@@ -1108,7 +1161,7 @@ std::optional<Value*> IntASTnode::codegen() {
 /// Always return a value
 /// Booleans in C are denoted as follows : 1 for true and 0 for false
 /// Truthy values are all values != to 0
-/// By C convention => convert true to 1 and 0 to false
+/// By C convention => convert true to 1 and false to 0
 /// @return Optional int literal
 std::optional<Value*> BoolASTnode::codegen() {
     int val = Val ? 1 : 0;
@@ -1398,7 +1451,8 @@ std::optional<Value*> UnaryOperatorASTnode::codegen() {
     case TOKEN_TYPE::NOT:
         return std::optional(misc::CastToi32(Builder.CreateICmpEQ(
             f, ConstantInt::get(TheContext, APInt(32, 0, true)),
-            "i_nottmp"))); // if 1 == 0 => 0 and if 0 == 0 =>  1
+            "i_nottmp"))); // if 1 == 0 => 0 and if 0 == 0 =>  1, create a not
+                           // operation
     case TOKEN_TYPE::MINUS:
         return std::optional(Builder.CreateNeg(f, "i_temp"));
     default:
@@ -1492,7 +1546,7 @@ std::optional<Value*> AssignmentASTnode::codegen() {
     Builder.CreateStore(rval, V); // Store the value in the local variable
     return std::optional(rval);   // return stored value
 }
-/// @brief Code generation for the functuon call
+/// @brief Code generation for the function call
 /// Check if the function exists, then check if the arguments match the function
 /// type description. If they match check if the types are incompatible, throw a
 /// warning and cast
@@ -1703,18 +1757,19 @@ std::optional<Value*> ExternFunctionDeclASTnode::codegen() {
 }
 /// @brief Function Node code generation
 /// Generate the prototype
-/// Create the basic block, create the allocainstance that will hold the return
-/// value of the function. Push back the initial scope of the function. Add to
-/// that scope the allocainstances of the parameters and the names. Create the
-/// return block for the current function and do not assign it to the function
-/// yet. Generate the code generation for the main block of the function. After
-/// if the main block is valid, append return block to basic block list of
-/// function, create uncond jump to return block and create ret with the value
-/// stored in allocainst, if the function is void => allocainst nullopt =>
-/// return void. In c it is valid for a function with a return type other than
-/// void to also not contain a return statement and still return something. The
-/// method that i used is the same one used with the actual clang ir. At the end
-/// clear, scope and nullify global variables for the return operations
+/// Create the entry basic block of the function, create the allocainstance that
+/// will hold the return value of the function. Push back the initial scope of
+/// the function. Add to that scope the allocainstances of the parameters and
+/// the names. Create the return block for the current function and do not
+/// assign it to the function yet. Generate the code generation for the main
+/// block of the function. After if the main block is valid, append return block
+/// to basic block list of function, create uncond jump to return block and
+/// create ret instruction with the value stored in allocainst, if the function
+/// is void => allocainst nullopt => return void. In c it is valid for a
+/// function with a return type other than void to also not contain a return
+/// statement and still return something. The method that i used is the same one
+/// used with the actual clang ir. At the end clear, scope and nullify global
+/// variables for the return operations
 /// @return
 std::optional<Value*> FunctionASTnode::codegen() {
     //------------GENERATE PROTOTOTYPE------------

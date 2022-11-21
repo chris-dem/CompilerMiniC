@@ -16,10 +16,6 @@ namespace misc {
     const std::optional<Value*> NULLOPTPTR = std::optional(nullptr);
     /// check if value is truthy => either 1 or 0
     Value* check_truthy(Value* LHS);
-    /// @brief  check is value is an error or void type
-    /// @param Val value to check
-    /// @return
-    bool checkValidExprType(llvm::Value* Val);
     /// @brief Check if token is in part of one the tokens
     /// @param tok token to check
     /// @param arr small set of token types to check
